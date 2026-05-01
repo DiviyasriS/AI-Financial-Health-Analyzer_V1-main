@@ -1,0 +1,16 @@
+# Secrets - never commit these
+appsettings.Development.json
+appsettings.*.json
+!appsettings.json
+
+# Build outputs
+**/bin/
+**/obj/
+
+# IDE files
+.vs/
+*.user
+.vscode/
+
+# Node modules (for Angular later)
+node_modules/
