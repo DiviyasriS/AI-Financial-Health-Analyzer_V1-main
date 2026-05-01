@@ -1,61 +1,61 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+
+// TransactionController is intentionally thin
+// It receives the request, calls the service, returns the response
+// Zero business logic lives here — it all lives in TransactionService
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize] // every endpoint here requires a valid JWT token
 public class TransactionController : ControllerBase
 {
-    private readonly AppDbContext _context;
-    private readonly CsvService _csvService;
+    private readonly TransactionService _transactionService;
 
-    public TransactionController(AppDbContext context, CsvService csvService)
+    public TransactionController(TransactionService transactionService)
     {
-        _context = context;
-        _csvService = csvService;
+        _transactionService = transactionService;
     }
 
+    // ─── POST /api/transaction/upload?userId=1 ────────────────────────────────
+
     [HttpPost("upload")]
-    public async Task<IActionResult> UploadCsv(IFormFile file, int userId)
+    public async Task<IActionResult> UploadFile(IFormFile file, int userId)
     {
         if (file == null || file.Length == 0)
-            return BadRequest("Invalid file");
+            return BadRequest(new { message = "Please upload a valid CSV file." });
+
+        // Only accept .csv files for now
+        var extension = Path.GetExtension(file.FileName).ToLower();
+        if (extension != ".csv")
+            return BadRequest(new { message = "Only CSV files are supported currently." });
 
         using var stream = file.OpenReadStream();
 
-        var transactions = _csvService.ProcessCsv(stream, userId, _context);
+        var result = await _transactionService.ProcessAndSaveAsync(stream, userId);
 
-        await _context.Transactions.AddRangeAsync(transactions);
-        await _context.SaveChangesAsync();
-
-        return Ok(new { message = "File processed successfully", count = transactions.Count });
+        return Ok(result);
     }
+
+    // ─── GET /api/transaction/{userId} ───────────────────────────────────────
 
     [HttpGet("{userId}")]
-    public IActionResult GetTransactions(int userId)
+    public async Task<IActionResult> GetTransactions(int userId)
     {
-        var data = _context.Transactions.Where(t => t.UserId == userId).ToList();
-        return Ok(data);
+        var transactions = await _transactionService.GetTransactionsAsync(userId);
+
+        if (transactions.Count == 0)
+            return Ok(new { message = "No transactions found for this user.", data = transactions });
+
+        return Ok(transactions);
     }
+
+    // ─── GET /api/transaction/summary/{userId} ────────────────────────────────
+
     [HttpGet("summary/{userId}")]
-public IActionResult GetSummary(int userId)
-{
-    var data = _context.Transactions
-        .Where(t => t.UserId == userId)
-        .ToList();
-
-    var totalSpent = data.Sum(t => t.Amount);
-
-    var categoryWise = data
-        .GroupBy(t => t.Category)
-        .Select(g => new
-        {
-            Category = g.Key,
-            Total = g.Sum(x => x.Amount)
-        });
-
-    return Ok(new
+    public async Task<IActionResult> GetSummary(int userId)
     {
-        TotalSpent = totalSpent,
-        CategoryBreakdown = categoryWise
-    });
-}
+        var summary = await _transactionService.GetSummaryAsync(userId);
+        return Ok(summary);
+    }
 }
