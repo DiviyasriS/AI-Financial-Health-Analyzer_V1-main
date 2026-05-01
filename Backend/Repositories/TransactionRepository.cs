@@ -1,9 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 
-// Concrete implementation of ITransactionRepository
-// This is the ONLY place in the codebase that touches the database for transactions
-// All EF Core queries for transactions live here — nowhere else
-
 public class TransactionRepository : ITransactionRepository
 {
     private readonly AppDbContext _context;
@@ -12,8 +8,6 @@ public class TransactionRepository : ITransactionRepository
     {
         _context = context;
     }
-
-    // ─── SAVE ────────────────────────────────────────────────────────────────
 
     public async Task AddRangeAsync(List<Transaction> transactions)
     {
@@ -24,8 +18,6 @@ public class TransactionRepository : ITransactionRepository
         await _context.SaveChangesAsync();
     }
 
-    // ─── READ ─────────────────────────────────────────────────────────────────
-
     public async Task<List<Transaction>> GetByUserIdAsync(int userId)
     {
         return await _context.Transactions
@@ -34,7 +26,8 @@ public class TransactionRepository : ITransactionRepository
             .ToListAsync();
     }
 
-    public async Task<List<Transaction>> GetByUserIdAndMonthAsync(int userId, int year, int month)
+    public async Task<List<Transaction>> GetByUserIdAndMonthAsync(
+        int userId, int year, int month)
     {
         return await _context.Transactions
             .Where(t => t.UserId == userId
@@ -44,8 +37,6 @@ public class TransactionRepository : ITransactionRepository
             .ToListAsync();
     }
 
-    // ─── DUPLICATE CHECK ──────────────────────────────────────────────────────
-
     public async Task<bool> DuplicateExistsAsync(
         int userId, DateTime date, string description, decimal amount)
     {
@@ -54,5 +45,18 @@ public class TransactionRepository : ITransactionRepository
             t.Date == date &&
             t.Description == description &&
             t.Amount == amount);
+    }
+
+    // ─── NEW ──────────────────────────────────────────────────────────────────
+    // Returns how many transactions exist for a user in a given year+month
+    // If this returns > 0, we know data for that month was already uploaded
+
+    public async Task<int> GetTransactionCountByMonthAsync(
+        int userId, int year, int month)
+    {
+        return await _context.Transactions
+            .CountAsync(t => t.UserId == userId
+                          && t.Date.Year == year
+                          && t.Date.Month == month);
     }
 }
