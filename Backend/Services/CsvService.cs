@@ -1,26 +1,22 @@
 using System.Globalization;
 
 // CsvService is responsible for ONE thing: parsing a CSV stream into Transaction objects
-// It does NOT save to the database — that is TransactionService's job
-// It uses ITransactionRepository only to check for duplicates during parsing
+// It does NOT save to the database — saving is TransactionService's job
+// It returns a ParsedFileResult so the caller knows exactly what happened row by row
 
 public class CsvService
 {
-    // ─── PARSE CSV ───────────────────────────────────────────────────────────
-
-    public async Task<List<Transaction>> ParseCsvAsync(
+    public async Task<ParsedFileResult> ParseAsync(
         Stream fileStream, int userId, ITransactionRepository repository)
     {
-        var transactions = new List<Transaction>();
-        var skippedRows = 0;
+        var result = new ParsedFileResult();
 
         using var reader = new StreamReader(fileStream);
 
         // Skip the header row
         var header = await reader.ReadLineAsync();
-
         if (header == null)
-            return transactions; // empty file
+            return result; // completely empty file
 
         while (!reader.EndOfStream)
         {
@@ -29,12 +25,15 @@ public class CsvService
             if (string.IsNullOrWhiteSpace(line))
                 continue;
 
-            var values = line.Split(',');
+            result.TotalRowsFound++;
 
-            // Need at least Date, Description, Amount
+            // Handle CSV values that may contain commas inside quotes
+            // e.g.  "Coffee Shop, Downtown",2024-01-15,5.50,Food
+            var values = SplitCsvLine(line);
+
             if (values.Length < 3)
             {
-                skippedRows++;
+                result.SkippedRows++;
                 continue;
             }
 
@@ -47,28 +46,31 @@ public class CsvService
                                     ? values[3].Trim()
                                     : "Uncategorized";
 
-                // Skip rows with empty description
+                // Skip blank descriptions
                 if (string.IsNullOrWhiteSpace(description))
                 {
-                    skippedRows++;
+                    result.SkippedRows++;
                     continue;
                 }
 
-                // Skip empty or zero-amount rows
+                // Skip zero-amount rows
                 if (amount == 0)
                 {
-                    skippedRows++;
+                    result.SkippedRows++;
                     continue;
                 }
 
-                // Duplicate check — asks the repository if this exact record exists
+                // Duplicate check against database
                 var isDuplicate = await repository.DuplicateExistsAsync(
                     userId, date, description, amount);
 
                 if (isDuplicate)
+                {
+                    result.DuplicateRows++;
                     continue;
+                }
 
-                transactions.Add(new Transaction
+                result.Transactions.Add(new Transaction
                 {
                     Date        = date,
                     Description = description,
@@ -81,12 +83,52 @@ public class CsvService
             }
             catch
             {
-                // Skip malformed rows silently — don't crash the entire upload
-                skippedRows++;
-                continue;
+                // Malformed row — skip it, don't crash the whole upload
+                result.SkippedRows++;
             }
         }
 
-        return transactions;
+        return result;
     }
+
+    // ─── HELPER: Handle quoted CSV values containing commas ──────────────────
+
+    private string[] SplitCsvLine(string line)
+    {
+        var values = new List<string>();
+        var current = string.Empty;
+        var insideQuotes = false;
+
+        foreach (var ch in line)
+        {
+            if (ch == '"')
+            {
+                insideQuotes = !insideQuotes;
+            }
+            else if (ch == ',' && !insideQuotes)
+            {
+                values.Add(current.Trim());
+                current = string.Empty;
+            }
+            else
+            {
+                current += ch;
+            }
+        }
+
+        values.Add(current.Trim()); // add the last value
+        return values.ToArray();
+    }
+}
+
+// ─── INTERNAL RESULT MODEL ────────────────────────────────────────────────────
+// Used only between CsvService/XlsxService and TransactionService
+// Not exposed in API responses directly
+
+public class ParsedFileResult
+{
+    public List<Transaction> Transactions { get; set; } = new();
+    public int TotalRowsFound { get; set; }
+    public int DuplicateRows { get; set; }
+    public int SkippedRows { get; set; }
 }
