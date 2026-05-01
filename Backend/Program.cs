@@ -97,6 +97,7 @@ builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
 // Services
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<CsvService>();
+builder.Services.AddScoped<XlsxService>();   
 builder.Services.AddScoped<TransactionService>();
 
 // ─── BUILD + MIDDLEWARE PIPELINE ──────────────────────────────────────────────
