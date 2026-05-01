@@ -71,7 +71,7 @@ public class TransactionService
             TotalRowsFound = parsed.TotalRowsFound,
             FileType       = extension.TrimStart('.').ToUpper(),
             Message        = BuildSummaryMessage(parsed, extension),
-            //MonthWarning   = monthWarning
+            MonthWarning   = monthWarning
         };
     }
 
