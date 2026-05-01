@@ -1,58 +1,92 @@
 using System.Globalization;
 
+// CsvService is responsible for ONE thing: parsing a CSV stream into Transaction objects
+// It does NOT save to the database — that is TransactionService's job
+// It uses ITransactionRepository only to check for duplicates during parsing
+
 public class CsvService
 {
-    public List<Transaction> ProcessCsv(Stream fileStream, int userId, AppDbContext context)
-{
-    var transactions = new List<Transaction>();
+    // ─── PARSE CSV ───────────────────────────────────────────────────────────
 
-    using (var reader = new StreamReader(fileStream))
+    public async Task<List<Transaction>> ParseCsvAsync(
+        Stream fileStream, int userId, ITransactionRepository repository)
     {
-        var header = reader.ReadLine();
+        var transactions = new List<Transaction>();
+        var skippedRows = 0;
+
+        using var reader = new StreamReader(fileStream);
+
+        // Skip the header row
+        var header = await reader.ReadLineAsync();
+
+        if (header == null)
+            return transactions; // empty file
 
         while (!reader.EndOfStream)
         {
-            var line = reader.ReadLine();
+            var line = await reader.ReadLineAsync();
+
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
             var values = line.Split(',');
+
+            // Need at least Date, Description, Amount
+            if (values.Length < 3)
+            {
+                skippedRows++;
+                continue;
+            }
 
             try
             {
-                var date = DateTime.Parse(values[0]);
-                var description = values[1]?.Trim();
-                var amount = decimal.Parse(values[2], CultureInfo.InvariantCulture);
-                var category = values.Length > 3 ? values[3] : "Uncategorized";
+                var date        = DateTime.Parse(values[0].Trim());
+                var description = values[1].Trim();
+                var amount      = decimal.Parse(values[2].Trim(), CultureInfo.InvariantCulture);
+                var category    = values.Length > 3
+                                    ? values[3].Trim()
+                                    : "Uncategorized";
 
-                // 🚨 Duplicate Check
-                bool exists = context.Transactions.Any(t =>
-                    t.Date == date &&
-                    t.Description == description &&
-                    t.Amount == amount &&
-                    t.UserId == userId
-                );
-
-                if (exists) continue;
-
-                var transaction = new Transaction
+                // Skip rows with empty description
+                if (string.IsNullOrWhiteSpace(description))
                 {
-                    Date = date,
-                    Description = description,
-                    Amount = amount,
-                    Category = category,
-                    UserId = userId
-                };
+                    skippedRows++;
+                    continue;
+                }
 
-                if (string.IsNullOrEmpty(description))
+                // Skip empty or zero-amount rows
+                if (amount == 0)
+                {
+                    skippedRows++;
+                    continue;
+                }
+
+                // Duplicate check — asks the repository if this exact record exists
+                var isDuplicate = await repository.DuplicateExistsAsync(
+                    userId, date, description, amount);
+
+                if (isDuplicate)
                     continue;
 
-                transactions.Add(transaction);
+                transactions.Add(new Transaction
+                {
+                    Date        = date,
+                    Description = description,
+                    Amount      = amount,
+                    Category    = string.IsNullOrWhiteSpace(category)
+                                    ? "Uncategorized"
+                                    : category,
+                    UserId      = userId
+                });
             }
             catch
             {
+                // Skip malformed rows silently — don't crash the entire upload
+                skippedRows++;
                 continue;
             }
         }
-    }
 
-    return transactions;
-}
+        return transactions;
+    }
 }
