@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 public class TransactionController : ControllerBase
 {
     private readonly TransactionService _transactionService;
+    private static readonly string[] AllowedExtensions = { ".csv", ".xlsx", ".xls" };
 
     public TransactionController(TransactionService transactionService)
     {
@@ -18,24 +19,30 @@ public class TransactionController : ControllerBase
     }
 
     // ─── POST /api/transaction/upload?userId=1 ────────────────────────────────
+[HttpPost("upload")]
+public async Task<IActionResult> UploadFile(IFormFile file, int userId)
+{
+    if (file == null || file.Length == 0)
+        return BadRequest(new { message = "Please upload a valid file." });
 
-    [HttpPost("upload")]
-    public async Task<IActionResult> UploadFile(IFormFile file, int userId)
-    {
-        if (file == null || file.Length == 0)
-            return BadRequest(new { message = "Please upload a valid CSV file." });
+    if (file.Length > 10 * 1024 * 1024)
+        return BadRequest(new { message = "File size must be under 10MB." });
 
-        // Only accept .csv files for now
-        var extension = Path.GetExtension(file.FileName).ToLower();
-        if (extension != ".csv")
-            return BadRequest(new { message = "Only CSV files are supported currently." });
+    var extension = Path.GetExtension(file.FileName).ToLower().Trim();
+    if (!AllowedExtensions.Contains(extension))
+        return BadRequest(new
+        {
+            message = $"Unsupported file type '{extension}'. " +
+                       "Please upload a .csv or .xlsx file."
+        });
 
-        using var stream = file.OpenReadStream();
+    using var stream = file.OpenReadStream();
 
-        var result = await _transactionService.ProcessAndSaveAsync(stream, userId);
+    var result = await _transactionService.ProcessAndSaveAsync(
+        stream, file.FileName, userId);
 
-        return Ok(result);
-    }
+    return Ok(result);
+}
 
     // ─── GET /api/transaction/{userId} ───────────────────────────────────────
 
