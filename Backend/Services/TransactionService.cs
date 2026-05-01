@@ -1,37 +1,61 @@
-using System.Globalization;
-
-// TransactionService contains all business logic for transactions
-// It sits between the Controller and the Repository
-// Controller → TransactionService → ITransactionRepository → Database
+// TransactionService orchestrates file processing
+// It decides which parser to use based on file extension
+// Controller → TransactionService → CsvService or XlsxService → ITransactionRepository
 
 public class TransactionService
 {
     private readonly ITransactionRepository _transactionRepository;
     private readonly CsvService _csvService;
+    private readonly XlsxService _xlsxService;
 
     public TransactionService(
         ITransactionRepository transactionRepository,
-        CsvService csvService)
+        CsvService csvService,
+        XlsxService xlsxService)
     {
         _transactionRepository = transactionRepository;
         _csvService = csvService;
+        _xlsxService = xlsxService;
     }
 
     // ─── UPLOAD AND PROCESS FILE ─────────────────────────────────────────────
 
-    public async Task<UploadResultDto> ProcessAndSaveAsync(Stream fileStream, int userId)
+    public async Task<FileProcessingResultDto> ProcessAndSaveAsync(
+        Stream fileStream, string fileName, int userId)
     {
-        // Step 1: Parse the CSV into transaction objects (duplicates already filtered)
-        var transactions = await _csvService.ParseCsvAsync(
-            fileStream, userId, _transactionRepository);
+        var extension = Path.GetExtension(fileName).ToLower().Trim();
 
-        // Step 2: Save all parsed transactions in one DB call
-        await _transactionRepository.AddRangeAsync(transactions);
+        // Route to the correct parser based on file type
+        ParsedFileResult parsed;
 
-        return new UploadResultDto
+        if (extension == ".csv")
         {
-            Message = "File processed successfully.",
-            SavedCount = transactions.Count
+            parsed = await _csvService.ParseAsync(fileStream, userId, _transactionRepository);
+        }
+        else if (extension == ".xlsx" || extension == ".xls")
+        {
+            parsed = await _xlsxService.ParseAsync(fileStream, userId, _transactionRepository);
+        }
+        else
+        {
+            // This should not happen — controller validates extension first
+            // But we handle it defensively here too
+            throw new InvalidOperationException(
+                $"Unsupported file type: {extension}. Only .csv and .xlsx are supported.");
+        }
+
+        // Save all valid transactions in a single DB call
+        await _transactionRepository.AddRangeAsync(parsed.Transactions);
+
+        // Build a detailed response for the frontend
+        return new FileProcessingResultDto
+        {
+            SavedCount      = parsed.Transactions.Count,
+            DuplicateCount  = parsed.DuplicateRows,
+            SkippedCount    = parsed.SkippedRows,
+            TotalRowsFound  = parsed.TotalRowsFound,
+            FileType        = extension.TrimStart('.').ToUpper(),
+            Message         = BuildSummaryMessage(parsed, extension)
         };
     }
 
@@ -41,8 +65,6 @@ public class TransactionService
     {
         var transactions = await _transactionRepository.GetByUserIdAsync(userId);
 
-        // Map Entity → DTO before returning to the controller
-        // Never return raw DB entities directly to the API response
         return transactions.Select(t => new TransactionDto
         {
             Id          = t.Id,
@@ -63,9 +85,9 @@ public class TransactionService
         {
             return new SpendingSummaryDto
             {
-                TotalSpent = 0,
+                TotalSpent        = 0,
                 CategoryBreakdown = new List<CategorySummaryDto>(),
-                MonthlyBreakdown = new List<MonthlySummaryDto>()
+                MonthlyBreakdown  = new List<MonthlySummaryDto>()
             };
         }
 
@@ -104,12 +126,26 @@ public class TransactionService
             MonthlyBreakdown  = monthlyBreakdown
         };
     }
-}
 
-// ─── HELPER DTO (only used internally for upload result) ──────────────────────
+    // ─── PRIVATE HELPER ───────────────────────────────────────────────────────
 
-public class UploadResultDto
-{
-    public string Message { get; set; } = string.Empty;
-    public int SavedCount { get; set; }
+    private string BuildSummaryMessage(ParsedFileResult parsed, string extension)
+    {
+        if (parsed.TotalRowsFound == 0)
+            return "File was empty or had no valid data rows.";
+
+        if (parsed.Transactions.Count == 0 && parsed.DuplicateRows > 0)
+            return "All transactions in this file already exist. No new records added.";
+
+        var msg = $"Processed {parsed.TotalRowsFound} rows. " +
+                  $"Saved: {parsed.Transactions.Count}";
+
+        if (parsed.DuplicateRows > 0)
+            msg += $", Duplicates skipped: {parsed.DuplicateRows}";
+
+        if (parsed.SkippedRows > 0)
+            msg += $", Invalid rows skipped: {parsed.SkippedRows}";
+
+        return msg + ".";
+    }
 }
