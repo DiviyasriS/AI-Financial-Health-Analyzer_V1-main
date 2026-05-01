@@ -24,6 +24,16 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // ─── JWT AUTHENTICATION ──────────────────────────────────────────────────────
 
+// Read JWT key and fail fast with a clear message if it's missing
+var jwtKey = builder.Configuration["Jwt:Key"];
+
+if (string.IsNullOrWhiteSpace(jwtKey))
+{
+    throw new InvalidOperationException(
+        "JWT Key is missing. Add 'Jwt:Key' to appsettings.Development.json. " +
+        "Make sure ASPNETCORE_ENVIRONMENT is set to 'Development'.");
+}
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -36,11 +46,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidAudience = builder.Configuration["Jwt:Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+                Encoding.UTF8.GetBytes(jwtKey))   // use the variable, not config directly
         };
     });
-
-builder.Services.AddAuthorization();
 
 // ─── CORS — allow Angular dev server ─────────────────────────────────────────
 
@@ -53,11 +61,15 @@ builder.Services.AddCors(options =>
 });
 
 // ─── DEPENDENCY INJECTION ─────────────────────────────────────────────────────
-// Register all repositories and services here
-// This is the complete DI registration for Phase 1
 
+// Repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
+
+// Services
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<CsvService>();
+builder.Services.AddScoped<TransactionService>();
 
 // ─── BUILD + MIDDLEWARE PIPELINE ──────────────────────────────────────────────
 
