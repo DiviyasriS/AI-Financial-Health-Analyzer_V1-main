@@ -1,0 +1,14 @@
+<!-- Top navigation bar — only shows when logged in -->
+<nav *ngIf="authService.isLoggedIn()" class="navbar">
+  <div class="nav-brand">AI Financial Analyzer</div>
+  <div class="nav-links">
+    <a routerLink="/dashboard">Dashboard</a>
+    <a routerLink="/upload">Upload</a>
+    <button (click)="logout()" class="btn-logout">Logout</button>
+  </div>
+</nav>
+
+<!-- All page content renders here -->
+<main class="main-content">
+  <router-outlet />
+</main>
