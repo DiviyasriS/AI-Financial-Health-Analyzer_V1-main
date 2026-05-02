@@ -1,0 +1,119 @@
+<div class="page-container">
+
+  <!-- Loading state -->
+  <div *ngIf="loading" class="loading-state">
+    <p>Loading your financial summary...</p>
+  </div>
+
+  <!-- Error state -->
+  <div *ngIf="error" class="alert alert-error">
+    {{ error }}
+    <button (click)="loadSummary()" class="btn-secondary">Retry</button>
+  </div>
+
+  <!-- Empty state -->
+  <div *ngIf="!loading && !error && summary?.totalTransactions === 0"
+       class="empty-state">
+    <div class="empty-icon">📊</div>
+    <h2>No transactions yet</h2>
+    <p>Upload your bank statement to see your spending analysis.</p>
+    <button (click)="goToUpload()" class="btn-primary">Upload File</button>
+  </div>
+
+  <!-- Dashboard content -->
+  <div *ngIf="!loading && !error && summary && summary.totalTransactions > 0">
+
+    <div class="page-header">
+      <h1>Spending Dashboard</h1>
+      <button (click)="goToUpload()" class="btn-secondary">+ Upload More</button>
+    </div>
+
+    <!-- ── Highlights row ──────────────────────────────────────────────── -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <span class="stat-label">Total Spent</span>
+        <span class="stat-value">₹{{ summary.totalSpent.toFixed(2) }}</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Transactions</span>
+        <span class="stat-value">{{ summary.totalTransactions }}</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Avg per Transaction</span>
+        <span class="stat-value">₹{{ summary.averageTransactionAmount.toFixed(2) }}</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Avg Monthly Spend</span>
+        <span class="stat-value">₹{{ summary.averageMonthlySpend.toFixed(2) }}</span>
+      </div>
+      <div class="stat-card highlight">
+        <span class="stat-label">Top Category</span>
+        <span class="stat-value">{{ summary.highestSpendingCategory }}</span>
+      </div>
+      <div class="stat-card highlight">
+        <span class="stat-label">Biggest Transaction</span>
+        <span class="stat-value">₹{{ summary.biggestTransaction.amount.toFixed(2) }}</span>
+        <span class="stat-sub">{{ summary.biggestTransaction.description }}</span>
+      </div>
+    </div>
+
+    <!-- ── Category breakdown ─────────────────────────────────────────── -->
+    <div class="card">
+      <h2>Spending by Category</h2>
+      <div class="category-list">
+        <div *ngFor="let cat of summary.categoryBreakdown" class="category-row">
+          <div class="category-header">
+            <span class="category-name">{{ cat.category }}</span>
+            <span class="category-total">₹{{ cat.total.toFixed(2) }}</span>
+            <span class="category-pct">{{ cat.percentageOfTotal }}%</span>
+          </div>
+          <!-- Progress bar showing percentage -->
+          <div class="progress-bar">
+            <div
+              class="progress-fill"
+              [style.width.%]="cat.percentageOfTotal">
+            </div>
+          </div>
+          <div class="category-meta">
+            {{ cat.transactionCount }} transaction{{ cat.transactionCount > 1 ? 's' : '' }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Monthly breakdown ──────────────────────────────────────────── -->
+    <div class="card">
+      <h2>Monthly Breakdown</h2>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th>Total Spent</th>
+            <th>Transactions</th>
+            <th>vs Previous Month</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let month of summary.monthlyBreakdown">
+            <td>{{ month.monthName }}</td>
+            <td>₹{{ month.total.toFixed(2) }}</td>
+            <td>{{ month.transactionCount }}</td>
+            <td>
+              <span *ngIf="month.changeFromPreviousMonth === null" class="muted">
+                First month
+              </span>
+              <span
+                *ngIf="month.changeFromPreviousMonth !== null"
+                [class.text-danger]="isPositiveChange(month.changeFromPreviousMonth)"
+                [class.text-success]="!isPositiveChange(month.changeFromPreviousMonth)">
+                {{ formatChange(month.changeFromPreviousMonth) }}
+                ({{ formatChangePct(month.percentageChangeFromPreviousMonth) }})
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
