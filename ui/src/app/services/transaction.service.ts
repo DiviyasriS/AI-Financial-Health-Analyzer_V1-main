@@ -1,10 +1,8 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { AuthService } from './auth.service';
 
-// Matches TransactionDto from backend
 export interface Transaction {
   id: number;
   date: string;
@@ -13,7 +11,6 @@ export interface Transaction {
   category: string;
 }
 
-// Matches CategorySummaryDto from backend
 export interface CategorySummary {
   category: string;
   total: number;
@@ -22,7 +19,6 @@ export interface CategorySummary {
   topTransactions: Transaction[];
 }
 
-// Matches MonthlySummaryDto from backend
 export interface MonthlySummary {
   year: number;
   month: number;
@@ -33,7 +29,6 @@ export interface MonthlySummary {
   percentageChangeFromPreviousMonth: number | null;
 }
 
-// Matches SpendingSummaryDto from backend
 export interface SpendingSummary {
   totalSpent: number;
   totalTransactions: number;
@@ -45,7 +40,6 @@ export interface SpendingSummary {
   monthlyBreakdown: MonthlySummary[];
 }
 
-// Matches FileProcessingResultDto from backend
 export interface UploadResult {
   savedCount: number;
   duplicateCount: number;
@@ -63,48 +57,25 @@ export class TransactionService {
 
   private readonly apiUrl = `${environment.apiUrl}/transaction`;
 
-  constructor(
-    private http: HttpClient,
-    private authService: AuthService
-  ) {}
+  // HttpClient is injected — interceptor handles auth headers automatically
+  constructor(private http: HttpClient) {}
 
-  // ── Upload file ───────────────────────────────────────────────────────────
-
-  uploadFile(file: File): Observable<UploadResult> {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    return this.http.post<UploadResult>(
-      `${this.apiUrl}/upload`,
-      formData,
-      { headers: this.getAuthHeaders() }
-    );
-  }
-
-  // ── Get all transactions ──────────────────────────────────────────────────
+uploadFile(file: File): Observable<UploadResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  return this.http.post<UploadResult>(
+    `${this.apiUrl}/upload`,
+    formData,
+    { responseType: 'json', observe: 'body' }
+  );
+}
 
   getTransactions(): Observable<Transaction[]> {
-    return this.http.get<Transaction[]>(
-      this.apiUrl,
-      { headers: this.getAuthHeaders() }
-    );
+    return this.http.get<Transaction[]>(this.apiUrl);
   }
-
-  // ── Get spending summary ──────────────────────────────────────────────────
 
   getSummary(): Observable<SpendingSummary> {
-    return this.http.get<SpendingSummary>(
-      `${this.apiUrl}/summary`,
-      { headers: this.getAuthHeaders() }
-    );
-  }
-
-  // ── Helper: build auth headers ────────────────────────────────────────────
-
-  private getAuthHeaders(): HttpHeaders {
-    const token = this.authService.getToken();
-    return new HttpHeaders({
-      'Authorization': `Bearer ${token}`
-    });
+    return this.http.get<SpendingSummary>(`${this.apiUrl}/summary`);
   }
 }

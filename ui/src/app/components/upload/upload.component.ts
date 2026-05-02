@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { TransactionService, UploadResult } from '../../services/transaction.service';
@@ -18,20 +18,20 @@ export class UploadComponent {
 
   constructor(
     private transactionService: TransactionService,
-    private router: Router
+    private router: Router,
+    private cdr: ChangeDetectorRef   // ← forces UI to update
   ) {}
 
-  // Called when user picks a file
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     if (input.files && input.files.length > 0) {
       this.selectedFile = input.files[0];
       this.result       = null;
       this.error        = '';
+      this.cdr.detectChanges();
     }
   }
 
-  // Called when user clicks Upload
   onUpload(): void {
     if (!this.selectedFile) {
       this.error = 'Please select a file first.';
@@ -41,18 +41,29 @@ export class UploadComponent {
     this.uploading = true;
     this.error     = '';
     this.result    = null;
+    this.cdr.detectChanges();
 
     this.transactionService.uploadFile(this.selectedFile)
       .subscribe({
         next: (res) => {
-          this.uploading = false;
-          this.result    = res;
+          console.log('Upload success:', res);
+          this.uploading    = false;
+          this.result       = res;
           this.selectedFile = null;
+          this.cdr.detectChanges();  // ← force UI refresh
         },
         error: (err) => {
+          console.error('Upload error:', err);
           this.uploading = false;
-          this.error = err.error?.message
-            || 'Upload failed. Please try again.';
+
+          if (err.status === 0) {
+            this.error = 'Cannot reach the server. Make sure backend is running on port 5257.';
+          } else if (err.status === 401) {
+            this.error = 'Session expired. Please log out and log in again.';
+          } else {
+            this.error = err.error?.message || `Upload failed (${err.status}).`;
+          }
+          this.cdr.detectChanges();  // ← force UI refresh on error too
         }
       });
   }
