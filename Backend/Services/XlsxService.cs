@@ -1,16 +1,10 @@
 using OfficeOpenXml;
 using System.Globalization;
 
-// XlsxService parses Excel (.xlsx) files into Transaction objects
-// It follows the exact same contract as CsvService — returns ParsedFileResult
-// Both services are used by TransactionService through the same interface
-
 public class XlsxService
 {
     public XlsxService()
     {
-        // EPPlus 6.x requires this license setting for non-commercial use
-        // For commercial use, a paid license is needed
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
     }
 
@@ -21,58 +15,102 @@ public class XlsxService
 
         using var package = new ExcelPackage(fileStream);
 
-        // Read the first worksheet
         var worksheet = package.Workbook.Worksheets.FirstOrDefault();
 
         if (worksheet == null || worksheet.Dimension == null)
-            return result; // empty workbook
+            return result;
 
         var rowCount = worksheet.Dimension.Rows;
         var colCount = worksheet.Dimension.Columns;
 
-        // Need at least a header row + one data row
         if (rowCount < 2)
             return result;
 
-        // Row 1 is the header — start from row 2
         for (int row = 2; row <= rowCount; row++)
         {
+            // Read raw cell objects — do NOT use GetValue<string>() for dates
+            var dateCell        = worksheet.Cells[row, 1];
+            var descriptionCell = worksheet.Cells[row, 2];
+            var amountCell      = worksheet.Cells[row, 3];
+            var categoryCell    = colCount >= 4 ? worksheet.Cells[row, 4] : null;
+
+            // Skip completely empty rows
+            if (dateCell.Value == null &&
+                descriptionCell.Value == null &&
+                amountCell.Value == null)
+                continue;
+
             result.TotalRowsFound++;
 
             try
             {
-                // Read each cell — GetValue returns null if cell is empty
-                var dateRaw        = worksheet.Cells[row, 1].GetValue<string>();
-                var descriptionRaw = worksheet.Cells[row, 2].GetValue<string>();
-                var amountRaw      = worksheet.Cells[row, 3].GetValue<string>();
-                var categoryRaw    = colCount >= 4
-                                       ? worksheet.Cells[row, 4].GetValue<string>()
-                                       : null;
+                // ── Parse Date ────────────────────────────────────────────────
+                // Excel stores dates as OLE Automation doubles (e.g. 45353.0)
+                // We must handle both: numeric OA date AND string date
+                DateTime date;
 
-                // Skip completely empty rows
-                if (string.IsNullOrWhiteSpace(dateRaw) &&
-                    string.IsNullOrWhiteSpace(descriptionRaw) &&
-                    string.IsNullOrWhiteSpace(amountRaw))
+                if (dateCell.Value == null)
                 {
-                    result.TotalRowsFound--; // don't count empty rows
+                    result.SkippedRows++;
                     continue;
                 }
+                else if (dateCell.Value is double oaDate)
+                {
+                    // Excel numeric date — convert using OLE Automation
+                    date = DateTime.FromOADate(oaDate);
+                }
+                else if (dateCell.Value is DateTime directDate)
+                {
+                    // EPPlus already parsed it as DateTime
+                    date = directDate;
+                }
+                else
+                {
+                    // Stored as a string — try parsing directly
+                    var dateStr = dateCell.Value.ToString()?.Trim();
+                    if (!DateTime.TryParse(dateStr, out date))
+                    {
+                        result.SkippedRows++;
+                        continue;
+                    }
+                }
 
-                // Validate required fields
-                if (string.IsNullOrWhiteSpace(dateRaw) ||
-                    string.IsNullOrWhiteSpace(descriptionRaw) ||
-                    string.IsNullOrWhiteSpace(amountRaw))
+                // ── Parse Description ─────────────────────────────────────────
+                var description = descriptionCell.Value?.ToString()?.Trim();
+
+                if (string.IsNullOrWhiteSpace(description))
                 {
                     result.SkippedRows++;
                     continue;
                 }
 
-                var date        = DateTime.Parse(dateRaw.Trim());
-                var description = descriptionRaw.Trim();
-                var amount      = decimal.Parse(amountRaw.Trim(), CultureInfo.InvariantCulture);
-                var category    = string.IsNullOrWhiteSpace(categoryRaw)
-                                    ? "Uncategorized"
-                                    : categoryRaw.Trim();
+                // ── Parse Amount ──────────────────────────────────────────────
+                // Amount cell can be a double, int, or string
+                decimal amount;
+
+                if (amountCell.Value == null)
+                {
+                    result.SkippedRows++;
+                    continue;
+                }
+                else if (amountCell.Value is double dblAmount)
+                {
+                    amount = (decimal)dblAmount;
+                }
+                else if (amountCell.Value is int intAmount)
+                {
+                    amount = (decimal)intAmount;
+                }
+                else
+                {
+                    var amountStr = amountCell.Value.ToString()?.Trim();
+                    if (!decimal.TryParse(amountStr, NumberStyles.Any,
+                            CultureInfo.InvariantCulture, out amount))
+                    {
+                        result.SkippedRows++;
+                        continue;
+                    }
+                }
 
                 if (amount == 0)
                 {
@@ -80,7 +118,12 @@ public class XlsxService
                     continue;
                 }
 
-                // Duplicate check
+                // ── Parse Category ────────────────────────────────────────────
+                var category = categoryCell?.Value?.ToString()?.Trim();
+                if (string.IsNullOrWhiteSpace(category))
+                    category = "Uncategorized";
+
+                // ── Duplicate check ───────────────────────────────────────────
                 var isDuplicate = await repository.DuplicateExistsAsync(
                     userId, date, description, amount);
 
@@ -99,14 +142,14 @@ public class XlsxService
                     UserId      = userId
                 });
             }
-            catch
+            catch (Exception ex)
             {
-                // Malformed row — skip it
+                // Log which row failed to help with debugging
+                Console.WriteLine($"[XlsxService] Skipping row {row}: {ex.Message}");
                 result.SkippedRows++;
             }
         }
 
-        // EPPlus operations are sync internally — wrap in Task for consistency
         return await Task.FromResult(result);
     }
 }

@@ -3,7 +3,7 @@ import { LoginComponent } from './components/login/login.component';
 import { RegisterComponent } from './components/register/register.component';
 import { UploadComponent } from './components/upload/upload.component';
 import { DashboardComponent } from './components/dashboard/dashboard.component';
-import { authGuard } from './guards/auth.guard';
+import { authGuard } from './guards/auth-guard';
 
 export const routes: Routes = [
   // Default route — redirect to login
