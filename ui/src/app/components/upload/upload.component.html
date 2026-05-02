@@ -1,0 +1,81 @@
+<div class="page-container">
+  <div class="page-header">
+    <h1>Upload Transactions</h1>
+    <p>Upload your bank statement in CSV or XLSX format</p>
+  </div>
+
+  <!-- Upload card -->
+  <div class="card">
+
+    <!-- File picker -->
+    <div class="upload-area">
+      <input
+        type="file"
+        id="fileInput"
+        accept=".csv,.xlsx,.xls"
+        (change)="onFileSelected($event)"
+        style="display:none"
+      />
+      <label for="fileInput" class="upload-label">
+        <div class="upload-icon">📂</div>
+        <div *ngIf="!selectedFile">
+          <strong>Click to choose a file</strong>
+          <p>Supports .csv and .xlsx</p>
+        </div>
+        <div *ngIf="selectedFile">
+          <strong>{{ selectedFile.name }}</strong>
+          <p>{{ (selectedFile.size / 1024).toFixed(1) }} KB — click to change</p>
+        </div>
+      </label>
+    </div>
+
+    <!-- Error message -->
+    <div *ngIf="error" class="alert alert-error">{{ error }}</div>
+
+    <!-- Upload button -->
+    <button
+      (click)="onUpload()"
+      [disabled]="!selectedFile || uploading"
+      class="btn-primary">
+      {{ uploading ? 'Uploading...' : 'Upload File' }}
+    </button>
+
+    <!-- Result card -->
+    <div *ngIf="result" class="result-card">
+      <h3>Upload Complete</h3>
+
+      <div class="result-grid">
+        <div class="result-item">
+          <span class="result-label">Saved</span>
+          <span class="result-value success">{{ result.savedCount }}</span>
+        </div>
+        <div class="result-item">
+          <span class="result-label">Duplicates</span>
+          <span class="result-value warning">{{ result.duplicateCount }}</span>
+        </div>
+        <div class="result-item">
+          <span class="result-label">Skipped</span>
+          <span class="result-value muted">{{ result.skippedCount }}</span>
+        </div>
+        <div class="result-item">
+          <span class="result-label">Total Rows</span>
+          <span class="result-value">{{ result.totalRowsFound }}</span>
+        </div>
+      </div>
+
+      <p class="result-message">{{ result.message }}</p>
+
+      <!-- Month warning if applicable -->
+      <div *ngIf="result.monthWarning" class="alert alert-warning">
+        {{ result.monthWarning }}
+      </div>
+
+      <button
+        *ngIf="result.savedCount > 0"
+        (click)="goToDashboard()"
+        class="btn-secondary">
+        View Dashboard →
+      </button>
+    </div>
+  </div>
+</div>
