@@ -1,5 +1,6 @@
-// Backend/Models/Transaction.cs  — REPLACE ENTIRE FILE
+// Backend/Models/Transaction.cs 
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;  
 
 public class Transaction
 {
@@ -12,6 +13,7 @@ public class Transaction
     public string Description { get; set; } = string.Empty;  // add default
 
     [Required]
+    [Column(TypeName = "decimal(18,2)")]
     public decimal Amount { get; set; }
 
     public string Category { get; set; } = string.Empty;  // add default
