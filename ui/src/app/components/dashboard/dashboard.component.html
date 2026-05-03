@@ -50,11 +50,13 @@
         <span class="stat-label">Top Category</span>
         <span class="stat-value">{{ summary.highestSpendingCategory }}</span>
       </div>
-      <div class="stat-card highlight">
-        <span class="stat-label">Biggest Transaction</span>
-        <span class="stat-value">₹{{ summary.biggestTransaction.amount.toFixed(2) }}</span>
-        <span class="stat-sub">{{ summary.biggestTransaction.description }}</span>
-      </div>
+    <div class="stat-card highlight">
+  <span class="stat-label">Biggest Transaction</span>
+  <span class="stat-value">
+    ₹{{ summary.biggestTransaction?.amount?.toFixed(2) ?? '0.00' }}
+  </span>
+  <span class="stat-sub">{{ summary.biggestTransaction?.description ?? 'N/A' }}</span>
+</div>
     </div>
 
     <!-- ── Category breakdown ─────────────────────────────────────────── -->

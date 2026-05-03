@@ -1,3 +1,4 @@
+// Backend/Models/Transaction.cs  — REPLACE ENTIRE FILE
 using System.ComponentModel.DataAnnotations;
 
 public class Transaction
@@ -8,12 +9,12 @@ public class Transaction
     public DateTime Date { get; set; }
 
     [Required]
-    public string Description { get; set; }
+    public string Description { get; set; } = string.Empty;  // add default
 
     [Required]
     public decimal Amount { get; set; }
 
-    public string Category { get; set; }
+    public string Category { get; set; } = string.Empty;  // add default
 
     public int UserId { get; set; }
 }
