@@ -35,7 +35,7 @@ export interface SpendingSummary {
   averageTransactionAmount: number;
   averageMonthlySpend: number;
   highestSpendingCategory: string;
-  biggestTransaction: Transaction;
+  biggestTransaction: Transaction | null;
   categoryBreakdown: CategorySummary[];
   monthlyBreakdown: MonthlySummary[];
 }
