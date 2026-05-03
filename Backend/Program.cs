@@ -102,8 +102,27 @@ builder.Services.AddScoped<XlsxService>();
 builder.Services.AddScoped<TransactionService>();
 
 // ─── BUILD + MIDDLEWARE PIPELINE ──────────────────────────────────────────────
-
+//global exception handling middleware
 var app = builder.Build();
+
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "application/json";
+        var error = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+        if (error != null)
+        {
+            await context.Response.WriteAsJsonAsync(new
+            {
+                message = "An unexpected error occurred.",
+                detail  = app.Environment.IsDevelopment() ? error.Error.Message : null
+            });
+        }
+    });
+});
+
 
 app.UseSwagger();
 app.UseSwaggerUI();
