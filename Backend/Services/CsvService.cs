@@ -1,11 +1,17 @@
 using System.Globalization;
-
+using Microsoft.Extensions.Logging;
 // CsvService is responsible for ONE thing: parsing a CSV stream into Transaction objects
 // It does NOT save to the database — saving is TransactionService's job
 // It returns a ParsedFileResult so the caller knows exactly what happened row by row
 
 public class CsvService
 {
+    private readonly ILogger<CsvService> _logger;
+
+    public CsvService(ILogger<CsvService> logger)
+{
+    _logger = logger;
+}
     public async Task<ParsedFileResult> ParseAsync(
         Stream fileStream, int userId, ITransactionRepository repository)
     {
@@ -81,11 +87,11 @@ public class CsvService
                     UserId      = userId
                 });
             }
-            catch
-            {
-                // Malformed row — skip it, don't crash the whole upload
-                result.SkippedRows++;
-            }
+            catch (Exception ex)
+{
+    _logger.LogWarning("Skipping malformed CSV row: {Error}", ex.Message);
+    result.SkippedRows++;
+}
         }
 
         return result;
