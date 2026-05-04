@@ -8,8 +8,7 @@ public class XlsxService
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
     }
 
-    public async Task<ParsedFileResult> ParseAsync(
-        Stream fileStream, int userId, ITransactionRepository repository)
+    public async Task<ParsedFileResult> ParseAsync(Stream fileStream, int userId)
     {
         var result = new ParsedFileResult();
 
@@ -124,14 +123,7 @@ public class XlsxService
                     category = "Uncategorized";
 
                 // ── Duplicate check ───────────────────────────────────────────
-                var isDuplicate = await repository.DuplicateExistsAsync(
-                    userId, date, description, amount);
 
-                if (isDuplicate)
-                {
-                    result.DuplicateRows++;
-                    continue;
-                }
 
                 result.Transactions.Add(new Transaction
                 {

@@ -27,9 +27,9 @@ public class TransactionService
         ParsedFileResult parsed;
 
         if (extension == ".csv")
-            parsed = await _csvService.ParseAsync(fileStream, userId, _transactionRepository);
+            parsed = await _csvService.ParseAsync(fileStream, userId);
         else if (extension == ".xlsx" || extension == ".xls")
-            parsed = await _xlsxService.ParseAsync(fileStream, userId, _transactionRepository);
+            parsed = await _xlsxService.ParseAsync(fileStream, userId);
         else
             throw new InvalidOperationException(
                 $"Unsupported file type: {extension}.");
@@ -64,12 +64,27 @@ public class TransactionService
             }
         }
 
-        await _transactionRepository.AddRangeAsync(parsed.Transactions);
+        //await _transactionRepository.AddRangeAsync(parsed.Transactions);
+        var deduped = new List<Transaction>();
+        int duplicateCount = 0;
+
+        foreach (var t in parsed.Transactions)
+        {
+            var isDup = await _transactionRepository.DuplicateExistsAsync(
+            userId, t.Date, t.Description, t.Amount);
+
+        if (isDup)
+            duplicateCount++;
+        else
+        deduped.Add(t);
+}
+
+await _transactionRepository.AddRangeAsync(deduped);
 
         return new FileProcessingResultDto
         {
-            SavedCount     = parsed.Transactions.Count,
-            DuplicateCount = parsed.DuplicateRows,
+            SavedCount     = deduped.Count,
+            DuplicateCount = duplicateCount,
             SkippedCount   = parsed.SkippedRows,
             TotalRowsFound = parsed.TotalRowsFound,
             FileType       = extension.TrimStart('.').ToUpper(),

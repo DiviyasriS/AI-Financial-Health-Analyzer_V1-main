@@ -12,8 +12,7 @@ public class CsvService
 {
     _logger = logger;
 }
-    public async Task<ParsedFileResult> ParseAsync(
-        Stream fileStream, int userId, ITransactionRepository repository)
+    public async Task<ParsedFileResult> ParseAsync(Stream fileStream, int userId)
     {
         var result = new ParsedFileResult();
 
@@ -75,15 +74,7 @@ public class CsvService
                 }
 
                 // Duplicate check against database
-                var isDuplicate = await repository.DuplicateExistsAsync(
-                    userId, date, description, amount);
-
-                if (isDuplicate)
-                {
-                    result.DuplicateRows++;
-                    continue;
-                }
-
+                
                 result.Transactions.Add(new Transaction
                 {
                     Date        = date,
