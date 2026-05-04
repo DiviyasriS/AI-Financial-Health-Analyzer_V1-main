@@ -3,15 +3,18 @@ public class TransactionService
     private readonly ITransactionRepository _transactionRepository;
     private readonly CsvService _csvService;
     private readonly XlsxService _xlsxService;
+    private readonly ILogger<TransactionService> _logger; 
 
     public TransactionService(
         ITransactionRepository transactionRepository,
         CsvService csvService,
-        XlsxService xlsxService)
+        XlsxService xlsxService,
+        ILogger<TransactionService> logger)
     {
         _transactionRepository = transactionRepository;
         _csvService = csvService;
         _xlsxService = xlsxService;
+        _logger = logger; 
     }
 
     // ─── UPLOAD AND PROCESS FILE ──────────────────────────────────────────────
