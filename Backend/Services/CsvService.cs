@@ -45,7 +45,15 @@ public class CsvService
 
             try
             {
-                var date        = DateTime.Parse(values[0].Trim());
+                //var date        = DateTime.Parse(values[0].Trim());
+                if (!DateTime.TryParse(values[0].Trim(),
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var date))
+{
+                result.SkippedRows++;
+                continue;
+}
                 var description = values[1].Trim();
                 var amount      = decimal.Parse(values[2].Trim(), CultureInfo.InvariantCulture);
                 var category    = values.Length > 3
