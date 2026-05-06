@@ -1,14 +1,14 @@
 <div class="page-container">
 
-  <!-- Loading state -->
+  <!-- Loading -->
   <div *ngIf="loading" class="loading-state">
-    <p>Loading your financial summary...</p>
+    <p>Analysing your finances...</p>
   </div>
 
-  <!-- Error state -->
-  <div *ngIf="error" class="alert alert-error">
+  <!-- Error -->
+  <div *ngIf="error && !loading" class="alert alert-error">
     {{ error }}
-    <button (click)="loadSummary()" class="btn-secondary">Retry</button>
+    <button (click)="loadDashboard()" class="btn-secondary">Retry</button>
   </div>
 
   <!-- Empty state -->
@@ -16,19 +16,19 @@
        class="empty-state">
     <div class="empty-icon">📊</div>
     <h2>No transactions yet</h2>
-    <p>Upload your bank statement to see your spending analysis.</p>
+    <p>Upload your bank statement to see your spending analysis and AI insights.</p>
     <button (click)="goToUpload()" class="btn-primary">Upload File</button>
   </div>
 
-  <!-- Dashboard content -->
+  <!-- Dashboard -->
   <div *ngIf="!loading && !error && summary && summary.totalTransactions > 0">
 
     <div class="page-header">
-      <h1>Spending Dashboard</h1>
+      <h1>Financial Dashboard</h1>
       <button (click)="goToUpload()" class="btn-secondary">+ Upload More</button>
     </div>
 
-    <!-- ── Highlights row ──────────────────────────────────────────────── -->
+    <!-- ── Stats row ────────────────────────────────────────────────── -->
     <div class="stats-grid">
       <div class="stat-card">
         <span class="stat-label">Total Spent</span>
@@ -39,24 +39,50 @@
         <span class="stat-value">{{ summary.totalTransactions }}</span>
       </div>
       <div class="stat-card">
-        <span class="stat-label">Avg per Transaction</span>
-        <span class="stat-value">₹{{ summary.averageTransactionAmount.toFixed(2) }}</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">Avg Monthly Spend</span>
+        <span class="stat-label">Avg Monthly</span>
         <span class="stat-value">₹{{ summary.averageMonthlySpend.toFixed(2) }}</span>
       </div>
       <div class="stat-card highlight">
         <span class="stat-label">Top Category</span>
         <span class="stat-value">{{ summary.highestSpendingCategory }}</span>
       </div>
-    <div class="stat-card highlight">
-  <span class="stat-label">Biggest Transaction</span>
-  <span class="stat-value">
-    ₹{{ summary.biggestTransaction?.amount?.toFixed(2) ?? '0.00' }}
-  </span>
-  <span class="stat-sub">{{ summary.biggestTransaction?.description ?? 'N/A' }}</span>
-</div>
+    </div>
+
+    <!-- ── Risk Card ─────────────────────────────────────────────────── -->
+    <div *ngIf="risk" class="card risk-card" [ngClass]="getRiskClass()">
+      <div class="risk-header">
+        <span class="risk-icon">{{ getRiskIcon() }}</span>
+        <div>
+          <h2>Financial Risk: {{ risk.riskLevel }}</h2>
+          <p class="risk-description">{{ risk.description }}</p>
+        </div>
+      </div>
+      <div class="risk-score-bar">
+        <div class="risk-score-label">Risk Score</div>
+        <div class="risk-bar">
+          <div class="risk-fill" [style.width.%]="risk.riskScore * 100"></div>
+        </div>
+        <span class="risk-score-value">{{ (risk.riskScore * 100).toFixed(0) }}%</span>
+      </div>
+    </div>
+
+    <!-- ── Insights ───────────────────────────────────────────────────── -->
+    <div class="card" *ngIf="insights.length > 0">
+      <h2>AI Insights</h2>
+      <div class="insights-list">
+        <div
+          *ngFor="let insight of insights"
+          class="insight-item"
+          [ngClass]="'insight-' + insight.type">
+          <div class="insight-icon">
+            {{ insight.type === 'danger' ? '🚨' : insight.type === 'warning' ? '⚠️' : 'ℹ️' }}
+          </div>
+          <div class="insight-content">
+            <div class="insight-title">{{ insight.title }}</div>
+            <div class="insight-message">{{ insight.message }}</div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ── Category breakdown ─────────────────────────────────────────── -->
@@ -69,12 +95,8 @@
             <span class="category-total">₹{{ cat.total.toFixed(2) }}</span>
             <span class="category-pct">{{ cat.percentageOfTotal }}%</span>
           </div>
-          <!-- Progress bar showing percentage -->
           <div class="progress-bar">
-            <div
-              class="progress-fill"
-              [style.width.%]="cat.percentageOfTotal">
-            </div>
+            <div class="progress-fill" [style.width.%]="cat.percentageOfTotal"></div>
           </div>
           <div class="category-meta">
             {{ cat.transactionCount }} transaction{{ cat.transactionCount > 1 ? 's' : '' }}
