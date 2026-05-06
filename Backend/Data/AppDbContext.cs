@@ -7,4 +7,6 @@ public class AppDbContext : DbContext
     public DbSet<Transaction> Transactions { get; set; }
     public DbSet<User> Users { get; set; }
     public DbSet<Category> Categories { get; set; }
+    public DbSet<RiskPrediction> RiskPredictions { get; set; }
+    public DbSet<Insight> Insights { get; set; }
 }
