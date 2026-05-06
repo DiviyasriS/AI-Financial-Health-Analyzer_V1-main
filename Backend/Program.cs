@@ -94,12 +94,19 @@ builder.Services.AddCors(options =>
 // Repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
+builder.Services.AddScoped<IRiskPredictionRepository, RiskPredictionRepository>();
+builder.Services.AddScoped<IInsightRepository, InsightRepository>();
 
 // Services
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<CsvService>();
-builder.Services.AddScoped<XlsxService>();   
+builder.Services.AddScoped<XlsxService>();
 builder.Services.AddScoped<TransactionService>();
+builder.Services.AddScoped<InsightsService>();
+
+// ML service registered as Singleton — model is trained once at startup
+// and reused for all predictions (training is expensive, prediction is cheap)
+builder.Services.AddSingleton<RiskPredictionService>();
 
 // ─── BUILD + MIDDLEWARE PIPELINE ──────────────────────────────────────────────
 //global exception handling middleware
