@@ -1,4 +1,4 @@
-public class TransactionService
+public class TransactionService : ITransactionService
 {
     private readonly ITransactionRepository _transactionRepository;
     private readonly CsvService _csvService;

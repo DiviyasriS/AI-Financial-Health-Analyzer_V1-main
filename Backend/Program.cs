@@ -1,39 +1,40 @@
-using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ─── CONTROLLERS + SWAGGER ───────────────────────────────────────────────────
-
+// ─── CONTROLLERS ──────────────────────────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
-// Configure Swagger to accept JWT tokens
+// ─── SWAGGER ──────────────────────────────────────────────────────────────────
 builder.Services.AddSwaggerGen(options =>
 {
-    // Tell Swagger that this API uses Bearer JWT tokens
-    options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "AI Financial Health Analyzer API",
+        Version = "v1"
+    });
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Type = SecuritySchemeType.Http,
         Scheme = "Bearer",
         BearerFormat = "JWT",
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Description = "Enter your JWT token. Example: Bearer eyJhbGci..."
+        In = ParameterLocation.Header,
+        Description = "Enter your JWT token."
     });
-
-    // Apply the security requirement globally to all endpoints
-    options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
-            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            new OpenApiSecurityScheme
             {
-                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                Reference = new OpenApiReference
                 {
-                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Type = ReferenceType.SecurityScheme,
                     Id = "Bearer"
                 }
             },
@@ -42,25 +43,17 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-// ─── DATABASE ────────────────────────────────────────────────────────────────
-
+// ─── DATABASE ─────────────────────────────────────────────────────────────────
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? throw new InvalidOperationException("Connection string 'DefaultConnection' is missing.");
     options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
 });
 
-// ─── JWT AUTHENTICATION ──────────────────────────────────────────────────────
-
-// Read JWT key and fail fast with a clear message if it's missing
-var jwtKey = builder.Configuration["Jwt:Key"];
-
-if (string.IsNullOrWhiteSpace(jwtKey))
-{
-    throw new InvalidOperationException(
-        "JWT Key is missing. Add 'Jwt:Key' to appsettings.Development.json. " +
-        "Make sure ASPNETCORE_ENVIRONMENT is set to 'Development'.");
-}
+// ─── JWT ──────────────────────────────────────────────────────────────────────
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("Jwt:Key is missing from configuration.");
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -73,74 +66,48 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(jwtKey))   // use the variable, not config directly
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
     });
 
-// ─── CORS — allow Angular dev server ─────────────────────────────────────────
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? new[] { "http://localhost:4200" };
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAngular", policy =>
-        policy.WithOrigins("http://localhost:4200")
+    options.AddPolicy("DefaultCors", policy =>
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials());
 });
 
 // ─── DEPENDENCY INJECTION ─────────────────────────────────────────────────────
-
 // Repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
-builder.Services.AddScoped<IRiskPredictionRepository, RiskPredictionRepository>();
-builder.Services.AddScoped<IInsightRepository, InsightRepository>();
 
-// Services
-builder.Services.AddScoped<AuthService>();
+// Services — register against interfaces
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<CsvService>();
 builder.Services.AddScoped<XlsxService>();
-builder.Services.AddScoped<TransactionService>();
-builder.Services.AddScoped<InsightsService>();
 
-// ML service registered as Singleton — model is trained once at startup
-// and reused for all predictions (training is expensive, prediction is cheap)
-builder.Services.AddSingleton<RiskPredictionService>();
-
-// ─── BUILD + MIDDLEWARE PIPELINE ──────────────────────────────────────────────
-//global exception handling middleware
+// ─── BUILD ────────────────────────────────────────────────────────────────────
 var app = builder.Build();
-app.UseMiddleware<ExceptionMiddleware>();
 
-app.UseExceptionHandler(errorApp =>
+// Global exception handling must be first
+app.UseMiddleware<GlobalExceptionMiddleware>();
+
+if (app.Environment.IsDevelopment())
 {
-    errorApp.Run(async context =>
-    {
-        context.Response.StatusCode = 500;
-        context.Response.ContentType = "application/json";
-        var error = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
-        if (error != null)
-        {
-            await context.Response.WriteAsJsonAsync(new
-            {
-                message = "An unexpected error occurred.",
-                detail  = app.Environment.IsDevelopment() ? error.Error.Message : null
-            });
-        }
-    });
-});
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
-
-app.UseSwagger();
-app.UseSwaggerUI();
-
-app.UseCors("AllowAngular");
-
-// Order matters: Authentication must come before Authorization
+app.UseCors("DefaultCors");
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
-
 app.Run();
