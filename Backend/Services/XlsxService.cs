@@ -3,112 +3,69 @@ using System.Globalization;
 
 public class XlsxService
 {
-    public XlsxService()
+    private readonly ILogger<XlsxService> _logger;
+
+    public XlsxService(ILogger<XlsxService> logger)
     {
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+        _logger = logger;
     }
 
-    public async Task<ParsedFileResult> ParseAsync(Stream fileStream, int userId)
+    public Task<ParsedFileResult> ParseAsync(Stream fileStream, int userId)
     {
         var result = new ParsedFileResult();
 
         using var package = new ExcelPackage(fileStream);
+        ExcelWorksheet? worksheet = package.Workbook.Worksheets.FirstOrDefault();
 
-        var worksheet = package.Workbook.Worksheets.FirstOrDefault();
+        if (worksheet?.Dimension == null)
+        {
+            _logger.LogWarning("XLSX file for user {UserId} has no worksheet or is empty", userId);
+            return Task.FromResult(result);
+        }
 
-        if (worksheet == null || worksheet.Dimension == null)
-            return result;
-
-        var rowCount = worksheet.Dimension.Rows;
-        var colCount = worksheet.Dimension.Columns;
+        int rowCount = worksheet.Dimension.Rows;
+        int colCount = worksheet.Dimension.Columns;
 
         if (rowCount < 2)
-            return result;
+        {
+            _logger.LogWarning("XLSX file for user {UserId} has no data rows", userId);
+            return Task.FromResult(result);
+        }
 
         for (int row = 2; row <= rowCount; row++)
         {
-            // Read raw cell objects — do NOT use GetValue<string>() for dates
-            var dateCell        = worksheet.Cells[row, 1];
-            var descriptionCell = worksheet.Cells[row, 2];
-            var amountCell      = worksheet.Cells[row, 3];
-            var categoryCell    = colCount >= 4 ? worksheet.Cells[row, 4] : null;
+            ExcelRange dateCell        = worksheet.Cells[row, 1];
+            ExcelRange descriptionCell = worksheet.Cells[row, 2];
+            ExcelRange amountCell      = worksheet.Cells[row, 3];
+            ExcelRange? categoryCell   = colCount >= 4 ? worksheet.Cells[row, 4] : null;
 
-            // Skip completely empty rows
-            if (dateCell.Value == null &&
-                descriptionCell.Value == null &&
-                amountCell.Value == null)
+            if (dateCell.Value == null && descriptionCell.Value == null && amountCell.Value == null)
                 continue;
 
             result.TotalRowsFound++;
 
             try
             {
-                // ── Parse Date ────────────────────────────────────────────────
-                // Excel stores dates as OLE Automation doubles (e.g. 45353.0)
-                // We must handle both: numeric OA date AND string date
-                DateTime date;
-
-                if (dateCell.Value == null)
+                if (!TryParseDate(dateCell.Value, out DateTime date))
                 {
+                    _logger.LogDebug("XLSX row {Row} for user {UserId} has invalid date, skipping", row, userId);
                     result.SkippedRows++;
                     continue;
                 }
-                else if (dateCell.Value is double oaDate)
-                {
-                    // Excel numeric date — convert using OLE Automation
-                    date = DateTime.FromOADate(oaDate);
-                }
-                else if (dateCell.Value is DateTime directDate)
-                {
-                    // EPPlus already parsed it as DateTime
-                    date = directDate;
-                }
-                else
-                {
-                    // Stored as a string — try parsing directly
-                    var dateStr = dateCell.Value.ToString()?.Trim();
-                    if (!DateTime.TryParse(dateStr, out date))
-                    {
-                        result.SkippedRows++;
-                        continue;
-                    }
-                }
 
-                // ── Parse Description ─────────────────────────────────────────
-                var description = descriptionCell.Value?.ToString()?.Trim();
-
+                string? description = descriptionCell.Value?.ToString()?.Trim();
                 if (string.IsNullOrWhiteSpace(description))
                 {
                     result.SkippedRows++;
                     continue;
                 }
 
-                // ── Parse Amount ──────────────────────────────────────────────
-                // Amount cell can be a double, int, or string
-                decimal amount;
-
-                if (amountCell.Value == null)
+                if (!TryParseAmount(amountCell.Value, out decimal amount))
                 {
+                    _logger.LogDebug("XLSX row {Row} for user {UserId} has invalid amount, skipping", row, userId);
                     result.SkippedRows++;
                     continue;
-                }
-                else if (amountCell.Value is double dblAmount)
-                {
-                    amount = (decimal)dblAmount;
-                }
-                else if (amountCell.Value is int intAmount)
-                {
-                    amount = (decimal)intAmount;
-                }
-                else
-                {
-                    var amountStr = amountCell.Value.ToString()?.Trim();
-                    if (!decimal.TryParse(amountStr, NumberStyles.Any,
-                            CultureInfo.InvariantCulture, out amount))
-                    {
-                        result.SkippedRows++;
-                        continue;
-                    }
                 }
 
                 if (amount == 0)
@@ -117,13 +74,9 @@ public class XlsxService
                     continue;
                 }
 
-                // ── Parse Category ────────────────────────────────────────────
-                var category = categoryCell?.Value?.ToString()?.Trim();
+                string? category = categoryCell?.Value?.ToString()?.Trim();
                 if (string.IsNullOrWhiteSpace(category))
                     category = "Uncategorized";
-
-                // ── Duplicate check ───────────────────────────────────────────
-
 
                 result.Transactions.Add(new Transaction
                 {
@@ -136,12 +89,46 @@ public class XlsxService
             }
             catch (Exception ex)
             {
-                // Log which row failed to help with debugging
-                Console.WriteLine($"[XlsxService] Skipping row {row}: {ex.Message}");
+                _logger.LogWarning(ex, "XLSX row {Row} for user {UserId} failed to parse, skipping", row, userId);
                 result.SkippedRows++;
             }
         }
 
-        return await Task.FromResult(result);
+        _logger.LogInformation("XLSX parse complete for user {UserId}: {Total} rows, {Valid} valid, {Skipped} skipped",
+            userId, result.TotalRowsFound, result.Transactions.Count, result.SkippedRows);
+
+        return Task.FromResult(result);
+    }
+
+    private static bool TryParseDate(object? cellValue, out DateTime date)
+    {
+        date = default;
+        if (cellValue == null) return false;
+
+        if (cellValue is double oaDate)
+        {
+            date = DateTime.FromOADate(oaDate);
+            return true;
+        }
+        if (cellValue is DateTime dt)
+        {
+            date = dt;
+            return true;
+        }
+        return DateTime.TryParse(cellValue.ToString()?.Trim(), CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out date);
+    }
+
+    private static bool TryParseAmount(object? cellValue, out decimal amount)
+    {
+        amount = 0;
+        if (cellValue == null) return false;
+
+        if (cellValue is double d) { amount = (decimal)d; return true; }
+        if (cellValue is int i)    { amount = i; return true; }
+        if (cellValue is decimal dec) { amount = dec; return true; }
+
+        return decimal.TryParse(cellValue.ToString()?.Trim(), NumberStyles.Any,
+            CultureInfo.InvariantCulture, out amount);
     }
 }
