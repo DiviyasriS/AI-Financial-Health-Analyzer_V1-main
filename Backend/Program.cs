@@ -87,12 +87,21 @@ builder.Services.AddCors(options =>
 // Repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
-
+builder.Services.AddScoped<IRiskPredictionRepository, RiskPredictionRepository>();
+builder.Services.AddScoped<IInsightRepository, InsightRepository>();
 // Services — register against interfaces
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<CsvService>();
 builder.Services.AddScoped<XlsxService>();
+builder.Services.AddScoped<InsightsService>();
+
+// ML service — MUST be Singleton so model trains only once
+builder.Services.AddSingleton<RiskPredictionService>();
+
+// ObjectPool support for PredictionEngine thread safety
+builder.Services.AddSingleton<Microsoft.Extensions.ObjectPool.ObjectPoolProvider,
+    Microsoft.Extensions.ObjectPool.DefaultObjectPoolProvider>();
 
 // ─── BUILD ────────────────────────────────────────────────────────────────────
 var app = builder.Build();
