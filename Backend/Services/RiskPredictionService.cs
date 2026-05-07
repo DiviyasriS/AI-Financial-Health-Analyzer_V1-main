@@ -103,65 +103,85 @@ public class RiskPredictionService
         _logger.LogInformation("PredictionEnginePool initialized.");
     }
 
-    public (string riskLevel, float riskScore) Predict(
-        decimal monthlyAvgSpend,
-        int totalTransactions,
-        int monthCount,
-        float topCategoryPercentage,
-        int categoryCount)
+public (string riskLevel, float riskScore) Predict(
+    decimal monthlyAvgSpend,
+    int totalTransactions,
+    int monthCount,
+    float topCategoryPercentage,
+    int categoryCount)
+{
+    EnsureModelTrained();
+
+    if (_predictionEnginePool == null)
     {
-        EnsureModelTrained();
+        _logger.LogWarning(
+            "Prediction pool not available. Returning default Low risk.");
 
-        if (_predictionEnginePool == null)
-        {
-            _logger.LogWarning("Prediction pool not available. Returning default Low risk.");
-            return ("Low", 0.1f);
-        }
+        return ("Low", 0.1f);
+    }
 
-        float transactionFrequency = monthCount > 0
-            ? (float)totalTransactions / monthCount
-            : totalTransactions;
+    float transactionFrequency = monthCount > 0
+        ? (float)totalTransactions / monthCount
+        : totalTransactions;
 
-        var input = new RiskInput
-        {
-            MonthlyAvgSpend       = (float)monthlyAvgSpend,
-            TransactionFrequency  = transactionFrequency,
-            TopCategoryPercentage = topCategoryPercentage,
-            CategoryCount         = categoryCount
-        };
+    var input = new RiskInput
+    {
+        MonthlyAvgSpend = (float)monthlyAvgSpend,
+        TransactionFrequency = transactionFrequency,
+        TopCategoryPercentage = topCategoryPercentage,
+        CategoryCount = categoryCount
+    };
 
-        RiskOutput result = _predictionEnginePool.GetPredictionEngine().Predict(input);
+    PredictionEngine<RiskInput, RiskOutput> engine =
+        _predictionEnginePool.GetPredictionEngine();
 
-        // PredictedLabel is the original float value (0, 1, or 2) after MapKeyToValue
+    try
+    {
+        RiskOutput result = engine.Predict(input);
+
         string riskLevel = result.PredictedLabel switch
         {
-            var l when Math.Abs(l - LABEL_LOW)    < 0.01f => "Low",
+            var l when Math.Abs(l - LABEL_LOW) < 0.01f => "Low",
             var l when Math.Abs(l - LABEL_MEDIUM) < 0.01f => "Medium",
-            var l when Math.Abs(l - LABEL_HIGH)   < 0.01f => "High",
+            var l when Math.Abs(l - LABEL_HIGH) < 0.01f => "High",
             _ => "Low"
         };
 
-        // Score[] from SdcaMaximumEntropy is already softmax — values sum to ~1.0
-        // Index order matches the key mapping (ByValue: 0=Low, 1=Medium, 2=High)
         float riskScore = riskLevel switch
         {
-            "Low"    => result.Score.Length > 0 ? result.Score[0] : 0.1f,
-            "Medium" => result.Score.Length > 1 ? result.Score[1] : 0.5f,
-            "High"   => result.Score.Length > 2 ? result.Score[2] : 0.9f,
-            _        => 0.5f
+            "Low" => result.Score.Length > 0
+                ? result.Score[0]
+                : 0.1f,
+
+            "Medium" => result.Score.Length > 1
+                ? result.Score[1]
+                : 0.5f,
+
+            "High" => result.Score.Length > 2
+                ? result.Score[2]
+                : 0.9f,
+
+            _ => 0.5f
         };
 
-        // Clamp to [0,1] as a safety measure
         riskScore = Math.Clamp(riskScore, 0f, 1f);
 
         _logger.LogInformation(
             "Risk prediction: Level={Level}, Score={Score:P1}, RawScores=[{Scores}]",
-            riskLevel, riskScore,
-            result.Score.Length > 0 ? string.Join(", ", result.Score.Select(s => s.ToString("F3"))) : "none");
+            riskLevel,
+            riskScore,
+            result.Score.Length > 0
+                ? string.Join(", ",
+                    result.Score.Select(s => s.ToString("F3")))
+                : "none");
 
         return (riskLevel, riskScore);
     }
-
+    finally
+    {
+        _predictionEnginePool.ReturnEngine(engine);
+    }
+}
     private List<RiskInput> GenerateSyntheticTrainingData()
     {
         // IMPROVED: More samples, overlapping ranges, better representation
@@ -235,37 +255,56 @@ public class RiskPredictionService
 
 // Thread-safe prediction engine pool
 public class PredictionEnginePool<TInput, TOutput>
-    where TInput  : class
+    where TInput : class
     where TOutput : class, new()
 {
     private readonly ObjectPool<PredictionEngine<TInput, TOutput>> _pool;
 
     public PredictionEnginePool(MLContext mlContext, ITransformer model)
     {
-        var policy = new PredictionEnginePoolPolicy<TInput, TOutput>(mlContext, model);
-        _pool = ObjectPool.Create(policy);
+        var policy = new PredictionEnginePoolPolicy<TInput, TOutput>(
+            mlContext,
+            model);
+
+        // FIXED: use DefaultObjectPool instead of ObjectPool.Create()
+        _pool = new DefaultObjectPool<PredictionEngine<TInput, TOutput>>(policy);
     }
 
-    public PredictionEngine<TInput, TOutput> GetPredictionEngine() => _pool.Get();
+    public PredictionEngine<TInput, TOutput> GetPredictionEngine()
+    {
+        return _pool.Get();
+    }
 
-    public void ReturnEngine(PredictionEngine<TInput, TOutput> engine) => _pool.Return(engine);
+    public void ReturnEngine(PredictionEngine<TInput, TOutput> engine)
+    {
+        _pool.Return(engine);
+    }
 }
 
-public class PredictionEnginePoolPolicy<TInput, TOutput> : IPooledObjectPolicy<PredictionEngine<TInput, TOutput>>
-    where TInput  : class
+public class PredictionEnginePoolPolicy<TInput, TOutput>
+    : IPooledObjectPolicy<PredictionEngine<TInput, TOutput>>
+    where TInput : class
     where TOutput : class, new()
 {
     private readonly MLContext _mlContext;
     private readonly ITransformer _model;
 
-    public PredictionEnginePoolPolicy(MLContext mlContext, ITransformer model)
+    public PredictionEnginePoolPolicy(
+        MLContext mlContext,
+        ITransformer model)
     {
         _mlContext = mlContext;
-        _model     = model;
+        _model = model;
     }
 
     public PredictionEngine<TInput, TOutput> Create()
-        => _mlContext.Model.CreatePredictionEngine<TInput, TOutput>(_model);
+    {
+        return _mlContext.Model
+            .CreatePredictionEngine<TInput, TOutput>(_model);
+    }
 
-    public bool Return(PredictionEngine<TInput, TOutput> obj) => true;
+    public bool Return(PredictionEngine<TInput, TOutput> obj)
+    {
+        return true;
+    }
 }
