@@ -111,6 +111,7 @@ builder.Services.AddSingleton<RiskPredictionService>();
 // ─── BUILD + MIDDLEWARE PIPELINE ──────────────────────────────────────────────
 //global exception handling middleware
 var app = builder.Build();
+app.UseMiddleware<ExceptionMiddleware>();
 
 app.UseExceptionHandler(errorApp =>
 {
