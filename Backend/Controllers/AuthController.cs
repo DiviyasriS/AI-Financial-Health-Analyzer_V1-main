@@ -1,28 +1,27 @@
 using Microsoft.AspNetCore.Mvc;
-
-// AuthController is the entry point for all authentication requests
-// It is intentionally thin — all logic lives in AuthService
-// Controller's job: receive request → validate input → call service → return response
+using System.ComponentModel.DataAnnotations;
 
 [ApiController]
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
     private readonly AuthService _authService;
+    private readonly ILogger<AuthController> _logger;
 
-    public AuthController(AuthService authService)
+    public AuthController(AuthService authService, ILogger<AuthController> logger)
     {
         _authService = authService;
+        _logger = logger;
     }
-
-    // ─── POST /api/auth/register ─────────────────────────────────────────────
 
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterDto dto)
     {
-        // Basic input validation before calling the service
         if (string.IsNullOrWhiteSpace(dto.Email))
             return BadRequest(new { message = "Email is required." });
+
+        if (!new EmailAddressAttribute().IsValid(dto.Email))
+            return BadRequest(new { message = "Email format is invalid." });
 
         if (string.IsNullOrWhiteSpace(dto.Password))
             return BadRequest(new { message = "Password is required." });
@@ -30,16 +29,19 @@ public class AuthController : ControllerBase
         if (dto.Password.Length < 6)
             return BadRequest(new { message = "Password must be at least 6 characters." });
 
-        var result = await _authService.RegisterAsync(dto);
+        _logger.LogInformation("Register attempt for email: {Email}", dto.Email);
 
-        // Service returns null when email is already taken
+        AuthResponseDto? result = await _authService.RegisterAsync(dto);
+
         if (result == null)
+        {
+            _logger.LogWarning("Registration failed — email already exists: {Email}", dto.Email);
             return Conflict(new { message = "An account with this email already exists." });
+        }
 
+        _logger.LogInformation("User registered successfully: {Email}", dto.Email);
         return Ok(result);
     }
-
-    // ─── POST /api/auth/login ────────────────────────────────────────────────
 
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginDto dto)
@@ -50,12 +52,17 @@ public class AuthController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.Password))
             return BadRequest(new { message = "Password is required." });
 
-        var result = await _authService.LoginAsync(dto);
+        _logger.LogInformation("Login attempt for email: {Email}", dto.Email);
 
-        // Service returns null when credentials are wrong
+        AuthResponseDto? result = await _authService.LoginAsync(dto);
+
         if (result == null)
+        {
+            _logger.LogWarning("Login failed for email: {Email}", dto.Email);
             return Unauthorized(new { message = "Invalid email or password." });
+        }
 
+        _logger.LogInformation("Login successful for email: {Email}", dto.Email);
         return Ok(result);
     }
 }
