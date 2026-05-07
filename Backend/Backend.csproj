@@ -28,4 +28,10 @@
     <PackageReference Include="EPPlus" Version="6.2.10" />
   </ItemGroup>
 
+
+  <ItemGroup>
+  <Compile Remove="Backend.Tests/**/*.cs" />
+  <None Remove="Backend.Tests/**/*.cs" />
+  </ItemGroup>
+
 </Project>
