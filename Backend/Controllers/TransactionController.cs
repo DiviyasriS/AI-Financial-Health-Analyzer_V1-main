@@ -7,14 +7,14 @@ using System.Security.Claims;
 [Authorize]
 public class TransactionController : ControllerBase
 {
-    private readonly TransactionService _transactionService;
+private readonly ITransactionService _transactionService;
 
     private static readonly string[] AllowedExtensions = { ".csv", ".xlsx", ".xls" };
 
-    public TransactionController(TransactionService transactionService)
-    {
-        _transactionService = transactionService;
-    }
+public TransactionController(ITransactionService transactionService)
+{
+    _transactionService = transactionService;
+}
 
     // ─── HELPER: Extract userId from the JWT token ────────────────────────────
     // This is safer than trusting userId from the URL/query param

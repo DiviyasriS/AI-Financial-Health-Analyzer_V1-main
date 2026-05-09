@@ -13,7 +13,7 @@ using System.Security.Claims;
 [Authorize]
 public class DashboardController : ControllerBase
 {
-    private readonly TransactionService     _transactionService;
+    private readonly ITransactionService _transactionService;
     private readonly RiskPredictionService  _riskPredictionService;
     private readonly IRiskPredictionRepository _riskRepo;
     private readonly InsightsService        _insightsService;
@@ -21,12 +21,12 @@ public class DashboardController : ControllerBase
     private readonly ILogger<DashboardController> _logger;
 
     public DashboardController(
-        TransactionService transactionService,
-        RiskPredictionService riskPredictionService,
-        IRiskPredictionRepository riskRepo,
-        InsightsService insightsService,
-        IInsightRepository insightRepo,
-        ILogger<DashboardController> logger)
+    ITransactionService transactionService,
+    RiskPredictionService riskPredictionService,
+    IRiskPredictionRepository riskRepo,
+    InsightsService insightsService,
+    IInsightRepository insightRepo,
+    ILogger<DashboardController> logger)
     {
         _transactionService    = transactionService;
         _riskPredictionService = riskPredictionService;
