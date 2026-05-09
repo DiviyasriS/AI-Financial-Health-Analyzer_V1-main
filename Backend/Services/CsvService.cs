@@ -1,17 +1,22 @@
 using System.Globalization;
+using System.Text;
 using Microsoft.Extensions.Logging;
-// CsvService is responsible for ONE thing: parsing a CSV stream into Transaction objects
-// It does NOT save to the database — saving is TransactionService's job
-// It returns a ParsedFileResult so the caller knows exactly what happened row by row
+
+// CsvService is responsible for ONE thing: parsing a CSV stream into Transaction objects.
+// It does NOT save to the database — saving is TransactionService's job.
+//
+// FIX: SplitCsvLine now uses StringBuilder instead of string concatenation.
+
 
 public class CsvService
 {
     private readonly ILogger<CsvService> _logger;
 
     public CsvService(ILogger<CsvService> logger)
-{
-    _logger = logger;
-}
+    {
+        _logger = logger;
+    }
+
     public async Task<ParsedFileResult> ParseAsync(Stream fileStream, int userId)
     {
         var result = new ParsedFileResult();
@@ -32,76 +37,80 @@ public class CsvService
 
             result.TotalRowsFound++;
 
-            // Handle CSV values that may contain commas inside quotes
-            // e.g.  "Coffee Shop, Downtown",2024-01-15,5.50,Food
             var values = SplitCsvLine(line);
 
             if (values.Length < 3)
             {
+                _logger.LogDebug("Skipping CSV row with fewer than 3 columns");
                 result.SkippedRows++;
                 continue;
             }
 
             try
             {
-                //var date        = DateTime.Parse(values[0].Trim());
-                if (!DateTime.TryParse(values[0].Trim(),
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.None,
-                out var date))
-{
-                result.SkippedRows++;
-                continue;
-}
-                var description = values[1].Trim();
-                var amount      = decimal.Parse(values[2].Trim(), CultureInfo.InvariantCulture);
-                var category    = values.Length > 3
-                                    ? values[3].Trim()
-                                    : "Uncategorized";
+                if (!DateTime.TryParse(
+                    values[0].Trim(),
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var date))
+                {
+                    _logger.LogDebug("Skipping row — cannot parse date: '{Value}'", values[0]);
+                    result.SkippedRows++;
+                    continue;
+                }
 
-                // Skip blank descriptions
+                var description = values[1].Trim();
                 if (string.IsNullOrWhiteSpace(description))
                 {
                     result.SkippedRows++;
                     continue;
                 }
 
-                // Skip zero-amount rows
+                if (!decimal.TryParse(
+                    values[2].Trim(),
+                    NumberStyles.Any,
+                    CultureInfo.InvariantCulture,
+                    out var amount))
+                {
+                    _logger.LogDebug("Skipping row — cannot parse amount: '{Value}'", values[2]);
+                    result.SkippedRows++;
+                    continue;
+                }
+
                 if (amount == 0)
                 {
                     result.SkippedRows++;
                     continue;
                 }
 
-                // Duplicate check against database
-                
+                var category = values.Length > 3 && !string.IsNullOrWhiteSpace(values[3])
+                    ? values[3].Trim()
+                    : "Uncategorized";
+
                 result.Transactions.Add(new Transaction
                 {
                     Date        = date,
                     Description = description,
                     Amount      = amount,
-                    Category    = string.IsNullOrWhiteSpace(category)
-                                    ? "Uncategorized"
-                                    : category,
+                    Category    = category,
                     UserId      = userId
                 });
             }
             catch (Exception ex)
-{
-    _logger.LogWarning("Skipping malformed CSV row: {Error}", ex.Message);
-    result.SkippedRows++;
-}
+            {
+                _logger.LogWarning("Skipping malformed CSV row: {Error}", ex.Message);
+                result.SkippedRows++;
+            }
         }
 
         return result;
     }
 
-    // ─── HELPER: Handle quoted CSV values containing commas ──────────────────
-
-    private string[] SplitCsvLine(string line)
+    // FIX: Use StringBuilder — old code used += char which is O(n²) allocation.
+    private static string[] SplitCsvLine(string line)
     {
-        var values = new List<string>();
-        var current = string.Empty;
+        var values      = new List<string>();
+        var current     = new StringBuilder();
         var insideQuotes = false;
 
         foreach (var ch in line)
@@ -112,28 +121,26 @@ public class CsvService
             }
             else if (ch == ',' && !insideQuotes)
             {
-                values.Add(current.Trim());
-                current = string.Empty;
+                values.Add(current.ToString().Trim());
+                current.Clear();
             }
             else
             {
-                current += ch;
+                current.Append(ch);
             }
         }
 
-        values.Add(current.Trim()); // add the last value
+        values.Add(current.ToString().Trim()); // last value
         return values.ToArray();
     }
 }
 
 // ─── INTERNAL RESULT MODEL ────────────────────────────────────────────────────
-// Used only between CsvService/XlsxService and TransactionService
-// Not exposed in API responses directly
 
 public class ParsedFileResult
 {
     public List<Transaction> Transactions { get; set; } = new();
     public int TotalRowsFound { get; set; }
-    public int DuplicateRows { get; set; }
-    public int SkippedRows { get; set; }
+    public int DuplicateRows  { get; set; }
+    public int SkippedRows    { get; set; }
 }
