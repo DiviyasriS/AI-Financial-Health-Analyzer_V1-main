@@ -1,31 +1,29 @@
 using Microsoft.EntityFrameworkCore;
 
-// Concrete implementation of IUserRepository
-// This is the ONLY place that talks to the database for User operations
-// All database queries for users live here — nowhere else
+// Concrete implementation of IUserRepository.
+// IMPORTANT: AuthService always normalises email to lowercase BEFORE calling any method here.
+// Therefore all queries use direct == comparison, which allows the DB index on Email to be used.
 
 public class UserRepository : IUserRepository
 {
     private readonly AppDbContext _context;
 
-    // AppDbContext is injected by .NET's DI container — we never create it manually
     public UserRepository(AppDbContext context)
     {
         _context = context;
     }
 
+
     public async Task<User?> GetByEmailAsync(string email)
     {
-        // FirstOrDefaultAsync returns null if not found — that's intentional
         return await _context.Users
-            .FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower());
+            .FirstOrDefaultAsync(u => u.Email == email);
     }
 
     public async Task<User> CreateAsync(User user)
     {
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
-
         // After SaveChangesAsync, EF Core populates user.Id automatically
         return user;
     }
@@ -33,6 +31,6 @@ public class UserRepository : IUserRepository
     public async Task<bool> EmailExistsAsync(string email)
     {
         return await _context.Users
-            .AnyAsync(u => u.Email.ToLower() == email.ToLower());
+            .AnyAsync(u => u.Email == email);
     }
 }
