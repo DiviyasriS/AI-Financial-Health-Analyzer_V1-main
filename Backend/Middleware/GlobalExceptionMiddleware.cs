@@ -34,13 +34,19 @@ public class GlobalExceptionMiddleware
             _logger.LogWarning(ex, "Invalid operation: {Message}", ex.Message);
             await WriteErrorResponse(context, HttpStatusCode.BadRequest, ex.Message);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unhandled exception on {Method} {Path}",
-                context.Request.Method, context.Request.Path);
-            await WriteErrorResponse(context, HttpStatusCode.InternalServerError,
-                "An unexpected error occurred. Please try again later.");
-        }
+catch (Exception ex)
+{
+    _logger.LogError(ex, "Unhandled exception on {Method} {Path}",
+        context.Request.Method, context.Request.Path);
+
+    var isDev = context.RequestServices
+        .GetRequiredService<IWebHostEnvironment>()
+        .IsDevelopment();
+
+    var message = isDev ? ex.Message : "An unexpected error occurred. Please try again later.";
+
+    await WriteErrorResponse(context, HttpStatusCode.InternalServerError, message);
+}
     }
 
     private static async Task WriteErrorResponse(HttpContext context, HttpStatusCode status, string message)
