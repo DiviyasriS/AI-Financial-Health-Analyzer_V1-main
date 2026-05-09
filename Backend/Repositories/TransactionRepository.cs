@@ -31,32 +31,43 @@ public class TransactionRepository : ITransactionRepository
     {
         return await _context.Transactions
             .Where(t => t.UserId == userId
-                     && t.Date.Year == year
+                     && t.Date.Year  == year
                      && t.Date.Month == month)
             .OrderByDescending(t => t.Date)
             .ToListAsync();
     }
 
+    // FIX: Added GetByUserIdAndDateRangeAsync to support batch duplicate checking.
+    // TransactionService previously called DuplicateExistsAsync once per row (N+1 pattern).
+    // Now TransactionService fetches all transactions in the CSV's date range in one query
+    // and does duplicate detection in-memory with a HashSet.
+    public async Task<List<Transaction>> GetByUserIdAndDateRangeAsync(
+        int userId, DateTime startDate, DateTime endDate)
+    {
+        return await _context.Transactions
+            .Where(t => t.UserId == userId
+                     && t.Date.Date >= startDate
+                     && t.Date.Date <= endDate)
+            .ToListAsync();
+    }
+
+    // Kept for backward compatibility — still used in tests
     public async Task<bool> DuplicateExistsAsync(
         int userId, DateTime date, string description, decimal amount)
     {
         return await _context.Transactions.AnyAsync(t =>
-            t.UserId == userId &&
-            t.Date == date &&
+            t.UserId      == userId      &&
+            t.Date        == date        &&
             t.Description == description &&
-            t.Amount == amount);
+            t.Amount      == amount);
     }
-
-    // ─── NEW ──────────────────────────────────────────────────────────────────
-    // Returns how many transactions exist for a user in a given year+month
-    // If this returns > 0, we know data for that month was already uploaded
 
     public async Task<int> GetTransactionCountByMonthAsync(
         int userId, int year, int month)
     {
         return await _context.Transactions
-            .CountAsync(t => t.UserId == userId
-                          && t.Date.Year == year
-                          && t.Date.Month == month);
+            .CountAsync(t => t.UserId      == userId
+                          && t.Date.Year   == year
+                          && t.Date.Month  == month);
     }
 }
