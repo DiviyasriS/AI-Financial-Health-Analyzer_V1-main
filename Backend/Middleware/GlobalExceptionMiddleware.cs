@@ -1,15 +1,17 @@
+
 using System.Net;
 using System.Text.Json;
-using Backend.Models;
 
 public class GlobalExceptionMiddleware
 {
-    private readonly RequestDelegate _next;
+    private readonly RequestDelegate                    _next;
     private readonly ILogger<GlobalExceptionMiddleware> _logger;
 
-    public GlobalExceptionMiddleware(RequestDelegate next, ILogger<GlobalExceptionMiddleware> logger)
+    public GlobalExceptionMiddleware(
+        RequestDelegate                    next,
+        ILogger<GlobalExceptionMiddleware> logger)
     {
-        _next = next;
+        _next   = next;
         _logger = logger;
     }
 
@@ -21,47 +23,53 @@ public class GlobalExceptionMiddleware
         }
         catch (UnauthorizedAccessException ex)
         {
-            _logger.LogWarning(ex, "Unauthorized access attempt");
+            _logger.LogWarning(ex, "Unauthorized access attempt on {Method} {Path}",
+                context.Request.Method, context.Request.Path);
             await WriteErrorResponse(context, HttpStatusCode.Unauthorized, "Unauthorized.");
         }
         catch (ArgumentException ex)
         {
-            _logger.LogWarning(ex, "Invalid argument: {Message}", ex.Message);
+            _logger.LogWarning(ex, "Invalid argument on {Method} {Path}: {Message}",
+                context.Request.Method, context.Request.Path, ex.Message);
             await WriteErrorResponse(context, HttpStatusCode.BadRequest, ex.Message);
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "Invalid operation: {Message}", ex.Message);
+            _logger.LogWarning(ex, "Invalid operation on {Method} {Path}: {Message}",
+                context.Request.Method, context.Request.Path, ex.Message);
             await WriteErrorResponse(context, HttpStatusCode.BadRequest, ex.Message);
         }
-catch (Exception ex)
-{
-    _logger.LogError(ex, "Unhandled exception on {Method} {Path}",
-        context.Request.Method, context.Request.Path);
-
-    var isDev = context.RequestServices
-        .GetRequiredService<IWebHostEnvironment>()
-        .IsDevelopment();
-
-    var message = isDev ? ex.Message : "An unexpected error occurred. Please try again later.";
-
-    await WriteErrorResponse(context, HttpStatusCode.InternalServerError, message);
-}
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unhandled exception on {Method} {Path}",
+                context.Request.Method, context.Request.Path);
+            await WriteErrorResponse(context, HttpStatusCode.InternalServerError,
+                "An unexpected error occurred. Please try again later.");
+        }
     }
 
-    private static async Task WriteErrorResponse(HttpContext context, HttpStatusCode status, string message)
+    private static async Task WriteErrorResponse(
+        HttpContext  context,
+        HttpStatusCode status,
+        string message)
     {
+        // Guard: if response has already started (e.g. streaming), we cannot write headers
+        if (context.Response.HasStarted)
+            return;
+
         context.Response.ContentType = "application/json";
-        context.Response.StatusCode = (int)status;
+        context.Response.StatusCode  = (int)status;
 
         var response = new ApiResponse<object>
         {
             Success = false,
             Message = message,
-            Data = null
+            Data    = null
         };
 
-        await context.Response.WriteAsync(JsonSerializer.Serialize(response,
-            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+        var json = JsonSerializer.Serialize(response,
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+
+        await context.Response.WriteAsync(json);
     }
 }
