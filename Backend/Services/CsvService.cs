@@ -49,15 +49,17 @@ public class CsvService
             try
             {
                 if (!DateTime.TryParse(
-                    values[0].Trim(),
-                    CultureInfo.InvariantCulture,
-                    DateTimeStyles.None,
-                    out var date))
-                {
-                    _logger.LogDebug("Skipping row — cannot parse date: '{Value}'", values[0]);
-                    result.SkippedRows++;
-                    continue;
-                }
+    values[0].Trim(),
+    CultureInfo.InvariantCulture,
+    DateTimeStyles.AssumeLocal,
+    out DateTime date))
+{
+    _logger.LogDebug("Skipping row — cannot parse date: '{Value}'", values[0]);
+    result.SkippedRows++;
+    continue;
+}
+
+date = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc);
 
                 var description = values[1].Trim();
                 if (string.IsNullOrWhiteSpace(description))

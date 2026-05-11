@@ -15,7 +15,7 @@ public class XlsxService
     {
         var result = new ParsedFileResult();
 
-        using var package = new ExcelPackage(fileStream);
+        using ExcelPackage package = new ExcelPackage(fileStream);
         ExcelWorksheet? worksheet = package.Workbook.Worksheets.FirstOrDefault();
 
         if (worksheet?.Dimension == null)
@@ -101,24 +101,48 @@ public class XlsxService
     }
 
     private static bool TryParseDate(object? cellValue, out DateTime date)
-    {
-        date = default;
-        if (cellValue == null) return false;
+{
+    date = default;
 
-        if (cellValue is double oaDate)
-        {
-            date = DateTime.FromOADate(oaDate);
-            return true;
-        }
-        if (cellValue is DateTime dt)
-        {
-            date = dt;
-            return true;
-        }
-        return DateTime.TryParse(cellValue.ToString()?.Trim(), CultureInfo.InvariantCulture,
-            DateTimeStyles.None, out date);
+    if (cellValue is null)
+        return false;
+
+    // Excel stores dates internally as OLE Automation numbers
+    if (cellValue is double oaDate)
+    {
+        date = DateTime.SpecifyKind(
+            DateTime.FromOADate(oaDate).Date,
+            DateTimeKind.Utc);
+
+        return true;
     }
 
+    // Already parsed as DateTime by EPPlus
+    if (cellValue is DateTime dt)
+    {
+        date = DateTime.SpecifyKind(
+            dt.Date,
+            DateTimeKind.Utc);
+
+        return true;
+    }
+
+    // String parsing fallback
+    if (DateTime.TryParse(
+        cellValue.ToString()?.Trim(),
+        CultureInfo.InvariantCulture,
+        DateTimeStyles.AssumeLocal,
+        out DateTime parsed))
+    {
+        date = DateTime.SpecifyKind(
+            parsed.Date,
+            DateTimeKind.Utc);
+
+        return true;
+    }
+
+    return false;
+}
     private static bool TryParseAmount(object? cellValue, out decimal amount)
     {
         amount = 0;
