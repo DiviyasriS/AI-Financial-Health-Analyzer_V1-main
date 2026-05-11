@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using Backend.Models.ML;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -8,14 +9,17 @@ using System.Security.Claims;
 public class DashboardController : ControllerBase
 {
     private readonly ITransactionService    _transactionService;
+    private readonly ITransactionRepository _transactionRepository;
     private readonly RiskPredictionService  _riskPredictionService;
     private readonly IRiskPredictionRepository _riskRepo;
     private readonly InsightsService        _insightsService;
     private readonly IInsightRepository     _insightRepo;
     private readonly ILogger<DashboardController> _logger;
 
+
     public DashboardController(
-        ITransactionService transactionService,        // ← interface, not concrete
+        ITransactionService transactionService,
+        ITransactionRepository transactionRepository,        // ← interface, not concrete
         RiskPredictionService riskPredictionService,
         IRiskPredictionRepository riskRepo,
         InsightsService insightsService,
@@ -23,6 +27,7 @@ public class DashboardController : ControllerBase
         ILogger<DashboardController> logger)
     {
         _transactionService    = transactionService;
+        _transactionRepository = transactionRepository;
         _riskPredictionService = riskPredictionService;
         _riskRepo              = riskRepo;
         _insightsService       = insightsService;
@@ -71,16 +76,14 @@ public class DashboardController : ControllerBase
             });
         }
 
-        float topCategoryPct = summary.CategoryBreakdown.Count > 0
-            ? (float)summary.CategoryBreakdown[0].PercentageOfTotal
-            : 0f;
+        List<Transaction> transactions =
+    await _transactionRepository.GetByUserIdAsync(userId);
 
-        (string riskLevel, float riskScore) = _riskPredictionService.Predict(
-            monthlyAvgSpend:       summary.AverageMonthlySpend,
-            totalTransactions:     summary.TotalTransactions,
-            monthCount:            summary.MonthlyBreakdown.Count,
-            topCategoryPercentage: topCategoryPct,
-            categoryCount:         summary.CategoryBreakdown.Count);
+UserRiskFeatures features =
+    FinancialFeatureExtractor.Extract(transactions);
+
+(string riskLevel, float riskScore) =
+    _riskPredictionService.Predict(features);
 
         var prediction = new RiskPrediction
         {
@@ -125,7 +128,18 @@ public class DashboardController : ControllerBase
         if (summary.TotalTransactions == 0)
             return Ok(new List<InsightDto>());
 
-        List<Insight> insights = await _insightsService.GenerateAndSaveAsync(userId, summary, riskLevel);
+        List<Transaction> transactions =
+    await _transactionRepository.GetByUserIdAsync(userId);
+
+UserRiskFeatures features =
+    FinancialFeatureExtractor.Extract(transactions);
+
+        List<Insight> insights =
+    await _insightsService.GenerateAndSaveAsync(
+        userId,
+        features,
+        summary,
+        riskLevel);
 
         List<InsightDto> dtos = insights.Select(i => new InsightDto
         {

@@ -113,12 +113,16 @@ builder.Services.AddScoped<CsvService>();
 builder.Services.AddScoped<XlsxService>();
 builder.Services.AddScoped<InsightsService>();
 
-// ML service — Singleton so the model trains only once at startup
-builder.Services.AddSingleton<RiskPredictionService>();
+
+
 
 // ObjectPool support for PredictionEngine thread safety
 builder.Services.AddSingleton<Microsoft.Extensions.ObjectPool.ObjectPoolProvider,
     Microsoft.Extensions.ObjectPool.DefaultObjectPoolProvider>();
+// ML service — Singleton so the model trains only once at startup
+builder.Services.AddSingleton<RiskPredictionService>();
+builder.Services.AddScoped<RiskModelTrainer>();
+builder.Services.AddHostedService<ModelTrainingHostedService>();
 
 // ─── BUILD ────────────────────────────────────────────────────────────────────
 var app = builder.Build();

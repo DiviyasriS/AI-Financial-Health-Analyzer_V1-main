@@ -37,10 +37,18 @@ public class TransactionRepository : ITransactionRepository
             .ToListAsync();
     }
 
-    // FIX: Added GetByUserIdAndDateRangeAsync to support batch duplicate checking.
-    // TransactionService previously called DuplicateExistsAsync once per row (N+1 pattern).
-    // Now TransactionService fetches all transactions in the CSV's date range in one query
-    // and does duplicate detection in-memory with a HashSet.
+    /// <summary>
+    /// Returns all distinct user IDs that have at least one transaction.
+    /// Used by the ML training pipeline to build per-user feature vectors.
+    /// </summary>
+    public async Task<List<int>> GetAllUserIdsAsync()
+    {
+        return await _context.Transactions
+            .Select(t => t.UserId)
+            .Distinct()
+            .ToListAsync();
+    }
+
     public async Task<List<Transaction>> GetByUserIdAndDateRangeAsync(
         int userId, DateTime startDate, DateTime endDate)
     {
@@ -51,7 +59,7 @@ public class TransactionRepository : ITransactionRepository
             .ToListAsync();
     }
 
-    // Kept for backward compatibility — still used in tests
+    /// <summary>Kept for backward compatibility — still used in unit tests.</summary>
     public async Task<bool> DuplicateExistsAsync(
         int userId, DateTime date, string description, decimal amount)
     {
