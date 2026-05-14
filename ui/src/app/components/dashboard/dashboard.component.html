@@ -1,143 +1,242 @@
-<div class="page-container">
+<!-- ══════════════════════════════════════════════════════════════════════
+     LOADING STATE
+══════════════════════════════════════════════════════════════════════ -->
+<div *ngIf="loading" class="db-loading">
+  <div class="db-spinner"></div>
+  <p>Crunching your numbers…</p>
+</div>
 
-  <!-- Loading -->
-  <div *ngIf="loading" class="loading-state">
-    <p>Analysing your finances...</p>
+<!-- ══════════════════════════════════════════════════════════════════════
+     ERROR STATE
+══════════════════════════════════════════════════════════════════════ -->
+<div *ngIf="error && !loading" class="alert alert-error db-error">
+  <span>⚠ {{ error }}</span>
+  <button (click)="loadDashboard()" class="btn-secondary">Retry</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     EMPTY STATE
+══════════════════════════════════════════════════════════════════════ -->
+<div *ngIf="hasNoData" class="db-empty">
+  <div class="db-empty-icon">📊</div>
+  <h2>No transactions yet</h2>
+  <p>Upload your bank statement to unlock AI-powered financial insights.</p>
+  <button (click)="goToUpload()" class="btn-primary">Upload Statement</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     MAIN DASHBOARD
+══════════════════════════════════════════════════════════════════════ -->
+<div *ngIf="hasData" class="db-root">
+
+  <!-- ── Page header ─────────────────────────────────────────────────── -->
+  <header class="db-header">
+    <div>
+      <h1 class="db-title">Financial Dashboard</h1>
+      <p class="db-subtitle">AI-powered spending analysis</p>
+    </div>
+    <button (click)="goToUpload()" class="btn-upload">
+      <span>＋</span> Upload Statement
+    </button>
+  </header>
+
+  <!-- ── KPI strip ───────────────────────────────────────────────────── -->
+  <section class="kpi-grid">
+    <div class="kpi-card">
+      <span class="kpi-icon">💰</span>
+      <div class="kpi-body">
+        <span class="kpi-label">Total Spent</span>
+        <span class="kpi-value">{{ formatCurrency(summary!.totalSpent) }}</span>
+      </div>
+    </div>
+
+    <div class="kpi-card">
+      <span class="kpi-icon">📋</span>
+      <div class="kpi-body">
+        <span class="kpi-label">Transactions</span>
+        <span class="kpi-value">{{ summary!.totalTransactions }}</span>
+      </div>
+    </div>
+
+    <div class="kpi-card">
+      <span class="kpi-icon">📅</span>
+      <div class="kpi-body">
+        <span class="kpi-label">Avg / Month</span>
+        <span class="kpi-value">{{ formatCurrency(summary!.averageMonthlySpend) }}</span>
+      </div>
+    </div>
+
+    <div class="kpi-card kpi-accent">
+      <span class="kpi-icon">🏆</span>
+      <div class="kpi-body">
+        <span class="kpi-label">Top Category</span>
+        <span class="kpi-value">{{ summary!.highestSpendingCategory }}</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Row 1 : Category Doughnut + Risk Gauge ─────────────────────── -->
+  <div class="db-row db-row-2">
+
+    <!-- Category donut -->
+    <div class="db-card">
+      <h2 class="db-card-title">
+        <span class="db-card-icon">🍩</span>
+        Spending by Category
+      </h2>
+      <div class="chart-wrap chart-wrap--md">
+        <canvas #categoryChart></canvas>
+      </div>
+
+      <!-- Legend pills below the chart on mobile -->
+      <div class="legend-pills">
+        <span
+          *ngFor="let s of categorySlices; let i = index"
+          class="legend-pill"
+          [style.--pill-color]="'var(--palette-' + i + ')'">
+          {{ s.label }} · {{ s.percentage }}%
+        </span>
+      </div>
+    </div>
+
+    <!-- Risk gauge -->
+    <div class="db-card db-card--risk" [ngClass]="getRiskClass()">
+      <h2 class="db-card-title">
+        <span class="db-card-icon">{{ getRiskIcon() }}</span>
+        Financial Risk Score
+      </h2>
+
+      <div class="risk-gauge-wrap">
+        <div class="chart-wrap chart-wrap--gauge">
+          <canvas #riskGaugeChart></canvas>
+        </div>
+        <div class="risk-gauge-label">
+          <span
+            class="risk-level-badge"
+            [style.color]="getRiskColour()"
+            [style.border-color]="getRiskColour()">
+            {{ risk!.riskLevel }}
+          </span>
+          <span class="risk-pct">{{ (risk!.riskScore * 100).toFixed(0) }}%</span>
+        </div>
+      </div>
+
+      <p class="risk-desc">{{ risk!.description }}</p>
+
+      <!-- Score bar -->
+      <div class="risk-bar-wrap">
+        <div class="risk-bar-track">
+          <div
+            class="risk-bar-fill"
+            [style.width.%]="risk!.riskScore * 100"
+            [style.background]="getRiskColour()">
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
-  <!-- Error -->
-  <div *ngIf="error && !loading" class="alert alert-error">
-    {{ error }}
-    <button (click)="loadDashboard()" class="btn-secondary">Retry</button>
+  <!-- ── Row 2 : Monthly Bar + Trend Line ───────────────────────────── -->
+  <div class="db-row db-row-2">
+
+    <div class="db-card">
+      <h2 class="db-card-title">
+        <span class="db-card-icon">📊</span>
+        Monthly Spending
+      </h2>
+      <div class="chart-wrap chart-wrap--lg">
+        <canvas #monthlyChart></canvas>
+      </div>
+    </div>
+
+    <div class="db-card">
+      <h2 class="db-card-title">
+        <span class="db-card-icon">📈</span>
+        Spending Trend
+      </h2>
+      <div class="chart-wrap chart-wrap--lg">
+        <canvas #trendChart></canvas>
+      </div>
+    </div>
+
   </div>
 
-  <!-- Empty state -->
-  <div *ngIf="!loading && !error && summary?.totalTransactions === 0"
-       class="empty-state">
-    <div class="empty-icon">📊</div>
-    <h2>No transactions yet</h2>
-    <p>Upload your bank statement to see your spending analysis and AI insights.</p>
-    <button (click)="goToUpload()" class="btn-primary">Upload File</button>
+  <!-- ── Row 3 : Top Categories horizontal bar ──────────────────────── -->
+  <div class="db-card">
+    <h2 class="db-card-title">
+      <span class="db-card-icon">🏅</span>
+      Top 5 Spending Categories
+    </h2>
+    <div class="chart-wrap chart-wrap--top">
+      <canvas #topCatChart></canvas>
+    </div>
   </div>
 
-  <!-- Dashboard -->
-  <div *ngIf="!loading && !error && summary && summary.totalTransactions > 0">
-
-    <div class="page-header">
-      <h1>Financial Dashboard</h1>
-      <button (click)="goToUpload()" class="btn-secondary">+ Upload More</button>
-    </div>
-
-    <!-- ── Stats row ────────────────────────────────────────────────── -->
-    <div class="stats-grid">
-      <div class="stat-card">
-        <span class="stat-label">Total Spent</span>
-        <span class="stat-value">₹{{ summary.totalSpent.toFixed(2) }}</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">Transactions</span>
-        <span class="stat-value">{{ summary.totalTransactions }}</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">Avg Monthly</span>
-        <span class="stat-value">₹{{ summary.averageMonthlySpend.toFixed(2) }}</span>
-      </div>
-      <div class="stat-card highlight">
-        <span class="stat-label">Top Category</span>
-        <span class="stat-value">{{ summary.highestSpendingCategory }}</span>
-      </div>
-    </div>
-
-    <!-- ── Risk Card ─────────────────────────────────────────────────── -->
-    <div *ngIf="risk" class="card risk-card" [ngClass]="getRiskClass()">
-      <div class="risk-header">
-        <span class="risk-icon">{{ getRiskIcon() }}</span>
-        <div>
-          <h2>Financial Risk: {{ risk.riskLevel }}</h2>
-          <p class="risk-description">{{ risk.description }}</p>
-        </div>
-      </div>
-      <div class="risk-score-bar">
-        <div class="risk-score-label">Risk Score</div>
-        <div class="risk-bar">
-          <div class="risk-fill" [style.width.%]="risk.riskScore * 100"></div>
-        </div>
-        <span class="risk-score-value">{{ (risk.riskScore * 100).toFixed(0) }}%</span>
-      </div>
-    </div>
-
-    <!-- ── Insights ───────────────────────────────────────────────────── -->
-    <div class="card" *ngIf="insights.length > 0">
-      <h2>AI Insights</h2>
-      <div class="insights-list">
-        <div
-          *ngFor="let insight of insights"
-          class="insight-item"
-          [ngClass]="'insight-' + insight.type">
-          <div class="insight-icon">
-            {{ insight.type === 'danger' ? '🚨' : insight.type === 'warning' ? '⚠️' : 'ℹ️' }}
-          </div>
-          <div class="insight-content">
-            <div class="insight-title">{{ insight.title }}</div>
-            <div class="insight-message">{{ insight.message }}</div>
-          </div>
+  <!-- ── Row 4 : Insights ───────────────────────────────────────────── -->
+  <div class="db-card" *ngIf="insights.length">
+    <h2 class="db-card-title">
+      <span class="db-card-icon">🤖</span>
+      AI Insights
+    </h2>
+    <div class="insights-grid">
+      <div
+        *ngFor="let ins of insights"
+        class="insight-card"
+        [ngClass]="'insight-' + ins.type">
+        <span class="insight-ico">{{ getInsightIcon(ins.type) }}</span>
+        <div class="insight-text">
+          <strong>{{ ins.title }}</strong>
+          <p>{{ ins.message }}</p>
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- ── Category breakdown ─────────────────────────────────────────── -->
-    <div class="card">
-      <h2>Spending by Category</h2>
-      <div class="category-list">
-        <div *ngFor="let cat of summary.categoryBreakdown" class="category-row">
-          <div class="category-header">
-            <span class="category-name">{{ cat.category }}</span>
-            <span class="category-total">₹{{ cat.total.toFixed(2) }}</span>
-            <span class="category-pct">{{ cat.percentageOfTotal }}%</span>
-          </div>
-          <div class="progress-bar">
-            <div class="progress-fill" [style.width.%]="cat.percentageOfTotal"></div>
-          </div>
-          <div class="category-meta">
-            {{ cat.transactionCount }} transaction{{ cat.transactionCount > 1 ? 's' : '' }}
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Monthly breakdown ──────────────────────────────────────────── -->
-    <div class="card">
-      <h2>Monthly Breakdown</h2>
-      <table class="data-table">
+  <!-- ── Row 5 : Monthly breakdown table ────────────────────────────── -->
+  <div class="db-card">
+    <h2 class="db-card-title">
+      <span class="db-card-icon">📆</span>
+      Monthly Breakdown
+    </h2>
+    <div class="table-scroll">
+      <table class="db-table">
         <thead>
           <tr>
             <th>Month</th>
-            <th>Total Spent</th>
-            <th>Transactions</th>
-            <th>vs Previous Month</th>
+            <th class="num">Total Spent</th>
+            <th class="num">Transactions</th>
+            <th class="num">vs Prev Month</th>
+            <th class="num">% Change</th>
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let month of summary.monthlyBreakdown">
-            <td>{{ month.monthName }}</td>
-            <td>₹{{ month.total.toFixed(2) }}</td>
-            <td>{{ month.transactionCount }}</td>
-            <td>
-              <span *ngIf="month.changeFromPreviousMonth === null" class="muted">
-                First month
-              </span>
+          <tr *ngFor="let m of summary!.monthlyBreakdown">
+            <td class="month-name">{{ m.monthName }}</td>
+            <td class="num">{{ formatCurrency(m.total) }}</td>
+            <td class="num">{{ m.transactionCount }}</td>
+            <td class="num">
               <span
-                *ngIf="month.changeFromPreviousMonth !== null"
-                [class.text-danger]="isPositiveChange(month.changeFromPreviousMonth)"
-                [class.text-success]="!isPositiveChange(month.changeFromPreviousMonth)">
-                {{ formatChange(month.changeFromPreviousMonth) }}
-                ({{ formatChangePct(month.percentageChangeFromPreviousMonth) }})
+                *ngIf="m.changeFromPreviousMonth !== null"
+                [class.text-danger]="isPositiveChange(m.changeFromPreviousMonth)"
+                [class.text-success]="!isPositiveChange(m.changeFromPreviousMonth)">
+                {{ formatChange(m.changeFromPreviousMonth) }}
               </span>
+              <span *ngIf="m.changeFromPreviousMonth === null" class="muted">—</span>
+            </td>
+            <td class="num">
+              <span
+                *ngIf="m.percentageChangeFromPreviousMonth !== null"
+                [class.text-danger]="isPositiveChange(m.percentageChangeFromPreviousMonth)"
+                [class.text-success]="!isPositiveChange(m.percentageChangeFromPreviousMonth)">
+                {{ formatChangePct(m.percentageChangeFromPreviousMonth) }}
+              </span>
+              <span *ngIf="m.percentageChangeFromPreviousMonth === null" class="muted">First month</span>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
-
   </div>
-</div>
+
+</div><!-- /db-root -->

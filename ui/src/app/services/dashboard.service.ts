@@ -28,6 +28,16 @@ export interface InsightData {
   type: string;           // "info" | "warning" | "danger"
   generatedAt: string;
 }
+export interface ChartSlice {
+  label: string;
+  value: number;
+  percentage: number;
+}
+
+export interface MonthlyBar {
+  label: string;
+  total: number;
+}
 
 @Injectable({
   providedIn: 'root'
@@ -49,4 +59,23 @@ export class DashboardService {
   getInsights(): Observable<InsightData[]> {
     return this.http.get<InsightData[]>(`${this.apiUrl}/insights`);
   }
+
+  toCategorySlices(summary: DashboardSummary): ChartSlice[] {
+  return summary.categoryBreakdown.map((item: CategorySummary): ChartSlice => {
+    return {
+      label: item.category,
+      value: item.total,
+      percentage: item.percentageOfTotal
+    };
+  });
+}
+
+toMonthlyBars(summary: DashboardSummary): MonthlyBar[] {
+  return summary.monthlyBreakdown.map((item: MonthlySummary): MonthlyBar => {
+    return {
+      label: item.monthName,
+      total: item.total
+    };
+  });
+}
 }
