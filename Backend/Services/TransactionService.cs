@@ -3,21 +3,24 @@ public class TransactionService : ITransactionService
     private readonly ITransactionRepository      _transactionRepository;
     private readonly CsvService                  _csvService;
     private readonly XlsxService                 _xlsxService;
+    private readonly PdfService                  _pdfService;         // ← NEW
     private readonly ILogger<TransactionService> _logger;
 
     public TransactionService(
         ITransactionRepository      transactionRepository,
         CsvService                  csvService,
         XlsxService                 xlsxService,
+        PdfService                  pdfService,                        // ← NEW
         ILogger<TransactionService> logger)
     {
         _transactionRepository = transactionRepository;
         _csvService            = csvService;
         _xlsxService           = xlsxService;
+        _pdfService            = pdfService;                           // ← NEW
         _logger                = logger;
     }
 
-    // ─── Upload + Deduplication ───────────────────────────────────────────────
+    // ─── Upload + Deduplication ───────────────────────────────────────────
 
     public async Task<FileProcessingResultDto> ProcessAndSaveAsync(
         Stream fileStream, string fileName, int userId)
@@ -26,11 +29,14 @@ public class TransactionService : ITransactionService
 
         _logger.LogInformation("Processing {Extension} file for user {UserId}", extension, userId);
 
+        // ── Route to the correct parser ───────────────────────────────────
+        // PDF is added here; CSV and XLSX paths are completely unchanged.
         ParsedFileResult parsed = extension switch
         {
             ".csv"  => await _csvService.ParseAsync(fileStream, userId),
             ".xlsx" => await _xlsxService.ParseAsync(fileStream, userId),
             ".xls"  => await _xlsxService.ParseAsync(fileStream, userId),
+            ".pdf"  => await _pdfService.ParseAsync(fileStream, userId),   // ← NEW
             _       => throw new InvalidOperationException($"Unsupported file type: {extension}")
         };
 
@@ -47,7 +53,7 @@ public class TransactionService : ITransactionService
             };
         }
 
-        // ── FIX: Batch duplicate check (eliminates N+1 queries) ───────────────
+        // ── FIX: Batch duplicate check (eliminates N+1 queries) ───────────
         //
         // OLD approach: for each parsed transaction, fire one SQL query:
         //   DuplicateExistsAsync(userId, date, description, amount)
@@ -82,7 +88,7 @@ public class TransactionService : ITransactionService
                 nonDuplicates.Add(tx);
         }
 
-        // ── Monthly duplicate upload detection ────────────────────────────────
+        // ── Monthly duplicate upload detection ────────────────────────────
         string? monthWarning = null;
 
         if (nonDuplicates.Count > 0)
@@ -125,7 +131,7 @@ public class TransactionService : ITransactionService
         };
     }
 
-    // ─── Queries ──────────────────────────────────────────────────────────────
+    // ─── Queries ──────────────────────────────────────────────────────────
 
     public async Task<List<TransactionDto>> GetTransactionsAsync(int userId)
     {
@@ -256,7 +262,7 @@ public class TransactionService : ITransactionService
         };
     }
 
-    // ─── Helpers ──────────────────────────────────────────────────────────────
+    // ─── Helpers ──────────────────────────────────────────────────────────
 
     // Creates a composite key used for in-memory duplicate detection.
     // Format: "yyyy-MM-dd|description|amount"

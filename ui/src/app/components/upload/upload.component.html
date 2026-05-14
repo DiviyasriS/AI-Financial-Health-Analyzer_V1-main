@@ -1,7 +1,7 @@
 <div class="page-container">
   <div class="page-header">
     <h1>Upload Transactions</h1>
-    <p>Upload your bank statement in CSV or XLSX format</p>
+    <p>Upload your bank statement in CSV, Excel, or PDF format</p>
   </div>
 
   <!-- Upload card -->
@@ -12,7 +12,7 @@
       <input
         type="file"
         id="fileInput"
-        accept=".csv,.xlsx,.xls"
+        accept=".csv,.xlsx,.xls,.pdf,application/pdf"
         (change)="onFileSelected($event)"
         style="display:none"
       />
@@ -20,7 +20,7 @@
         <div class="upload-icon">📂</div>
         <div *ngIf="!selectedFile">
           <strong>Click to choose a file</strong>
-          <p>Supports .csv and .xlsx</p>
+          <p>Supports .csv, .xlsx, .xls, and .pdf</p>
         </div>
         <div *ngIf="selectedFile">
           <strong>{{ selectedFile.name }}</strong>
