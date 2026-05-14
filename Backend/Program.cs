@@ -112,7 +112,9 @@ builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<CsvService>();
 builder.Services.AddScoped<XlsxService>();
 builder.Services.AddScoped<PdfService>();      // ← NEW: PDF parsing service
+builder.Services.AddScoped<CategoryPredictionService>();
 builder.Services.AddScoped<InsightsService>();
+
 
 // ObjectPool support for PredictionEngine thread safety
 builder.Services.AddSingleton<Microsoft.Extensions.ObjectPool.ObjectPoolProvider,
