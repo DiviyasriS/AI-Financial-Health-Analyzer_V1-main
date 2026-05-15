@@ -14,3 +14,10 @@ appsettings.*.json
 
 # Node modules (for Angular later)
 node_modules/
+
+
+#logs
+#logs
+Backend/Logs/
+Logs/
+*.log

@@ -2,144 +2,189 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using System.Text;
 using QuestPDF.Infrastructure;
+using Serilog;
+using Serilog.Events;
+using System.Text;
 
-var builder = WebApplication.CreateBuilder(args);
-QuestPDF.Settings.License = LicenseType.Community;
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .WriteTo.Console()
+    .CreateBootstrapLogger();
 
-// ─── CONTROLLERS ──────────────────────────────────────────────────────────────
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-
-// ─── SWAGGER ──────────────────────────────────────────────────────────────────
-builder.Services.AddSwaggerGen(options =>
+try
 {
-    options.SwaggerDoc("v1", new OpenApiInfo
+    WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+    QuestPDF.Settings.License = LicenseType.Community;
+
+    builder.Host.UseSerilog((context, services, configuration) =>
     {
-        Title = "AI Financial Health Analyzer API",
-        Version = "v1"
+        configuration
+            .ReadFrom.Configuration(context.Configuration)
+            .ReadFrom.Services(services)
+            .Enrich.FromLogContext()
+            .Enrich.WithProperty("Environment", context.HostingEnvironment.EnvironmentName);
     });
-    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+
+    builder.Services.AddControllers();
+    builder.Services.AddEndpointsApiExplorer();
+
+    builder.Services.AddSwaggerGen(options =>
     {
-        Name = "Authorization",
-        Type = SecuritySchemeType.Http,
-        Scheme = "Bearer",
-        BearerFormat = "JWT",
-        In = ParameterLocation.Header,
-        Description = "Enter your JWT token."
-    });
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
+        options.SwaggerDoc("v1", new OpenApiInfo
         {
-            new OpenApiSecurityScheme
+            Title = "AI Financial Health Analyzer API",
+            Version = "v1"
+        });
+
+        options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+        {
+            Name = "Authorization",
+            Type = SecuritySchemeType.Http,
+            Scheme = "Bearer",
+            BearerFormat = "JWT",
+            In = ParameterLocation.Header,
+            Description = "Enter your JWT token."
+        });
+
+        options.AddSecurityRequirement(new OpenApiSecurityRequirement
+        {
             {
-                Reference = new OpenApiReference
+                new OpenApiSecurityScheme
                 {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
+                    Reference = new OpenApiReference
+                    {
+                        Type = ReferenceType.SecurityScheme,
+                        Id = "Bearer"
+                    }
+                },
+                Array.Empty<string>()
+            }
+        });
     });
-});
 
-// ─── DATABASE ─────────────────────────────────────────────────────────────────
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-if (string.IsNullOrWhiteSpace(connectionString))
-    throw new InvalidOperationException(
-        "Connection string 'DefaultConnection' is missing or empty. " +
-        "Set it in appsettings.Development.json (which is gitignored).");
+    string? connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-{
-    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
-});
-
-// ─── JWT ──────────────────────────────────────────────────────────────────────
-// FIX: Use IsNullOrWhiteSpace — empty string "" passes the old ?? null check
-// and causes IDX10720 (key too short) at runtime on first login/register.
-var jwtKey = builder.Configuration["Jwt:Key"];
-if (string.IsNullOrWhiteSpace(jwtKey))
-    throw new InvalidOperationException(
-        "Jwt:Key is missing or empty. " +
-        "Add a key of at least 32 characters to appsettings.Development.json. " +
-        "Example: \"Key\": \"my-super-secret-key-at-least-32-chars!!\"");
-
-if (jwtKey.Length < 32)
-    throw new InvalidOperationException(
-        $"Jwt:Key is too short ({jwtKey.Length} chars). " +
-        "HS256 requires at least 32 characters (256 bits).");
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    if (string.IsNullOrWhiteSpace(connectionString))
     {
-        options.TokenValidationParameters = new TokenValidationParameters
+        throw new InvalidOperationException(
+            "Connection string 'DefaultConnection' is missing or empty.");
+    }
+
+    builder.Services.AddDbContext<AppDbContext>(options =>
+    {
+        options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
+    });
+
+    string? jwtKey = builder.Configuration["Jwt:Key"];
+
+    if (string.IsNullOrWhiteSpace(jwtKey))
+    {
+        throw new InvalidOperationException("Jwt:Key is missing or empty.");
+    }
+
+    if (jwtKey.Length < 32)
+    {
+        throw new InvalidOperationException(
+            $"Jwt:Key is too short ({jwtKey.Length} chars). HS256 requires at least 32 characters.");
+    }
+
+    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
         {
-            ValidateIssuer           = true,
-            ValidateAudience         = true,
-            ValidateLifetime         = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer              = builder.Configuration["Jwt:Issuer"],
-            ValidAudience            = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                ValidIssuer = builder.Configuration["Jwt:Issuer"],
+                ValidAudience = builder.Configuration["Jwt:Audience"],
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+            };
+        });
+
+    string[] allowedOrigins = builder.Configuration
+        .GetSection("Cors:AllowedOrigins")
+        .Get<string[]>() ?? new[] { "http://localhost:4200" };
+
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("DefaultCors", policy =>
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .AllowCredentials());
+    });
+
+    builder.Services.AddScoped<IUserRepository, UserRepository>();
+    builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
+    builder.Services.AddScoped<IRiskPredictionRepository, RiskPredictionRepository>();
+    builder.Services.AddScoped<IInsightRepository, InsightRepository>();
+
+    builder.Services.AddScoped<IAuthService, AuthService>();
+    builder.Services.AddScoped<ITransactionService, TransactionService>();
+    builder.Services.AddScoped<CsvService>();
+    builder.Services.AddScoped<XlsxService>();
+    builder.Services.AddScoped<PdfService>();
+    builder.Services.AddScoped<CategoryPredictionService>();
+    builder.Services.AddScoped<InsightsService>();
+    builder.Services.AddScoped<IReportService, FinancialReportService>();
+
+    builder.Services.AddSingleton<Microsoft.Extensions.ObjectPool.ObjectPoolProvider,
+        Microsoft.Extensions.ObjectPool.DefaultObjectPoolProvider>();
+
+    builder.Services.AddSingleton<RiskPredictionService>();
+    builder.Services.AddScoped<RiskModelTrainer>();
+    builder.Services.AddHostedService<ModelTrainingHostedService>();
+
+    WebApplication app = builder.Build();
+
+    app.UseMiddleware<GlobalExceptionMiddleware>();
+
+    app.UseSerilogRequestLogging(options =>
+    {
+        options.MessageTemplate =
+            "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
+
+        options.GetLevel = (httpContext, elapsed, exception) =>
+        {
+            if (exception != null)
+                return LogEventLevel.Error;
+
+            if (httpContext.Response.StatusCode >= 500)
+                return LogEventLevel.Error;
+
+            if (httpContext.Response.StatusCode >= 400)
+                return LogEventLevel.Warning;
+
+            return LogEventLevel.Information;
         };
     });
 
-// ─── CORS ─────────────────────────────────────────────────────────────────────
-var allowedOrigins = builder.Configuration
-    .GetSection("Cors:AllowedOrigins")
-    .Get<string[]>() ?? new[] { "http://localhost:4200" };
+    app.UseMiddleware<RequestLoggingMiddleware>();
 
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("DefaultCors", policy =>
-        policy.WithOrigins(allowedOrigins)
-              .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials());
-});
+    if (app.Environment.IsDevelopment())
+    {
+        app.UseSwagger();
+        app.UseSwaggerUI();
+    }
 
-// ─── DEPENDENCY INJECTION ─────────────────────────────────────────────────────
-// Repositories
-builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
-builder.Services.AddScoped<IRiskPredictionRepository, RiskPredictionRepository>();
-builder.Services.AddScoped<IInsightRepository, InsightRepository>();
+    app.UseCors("DefaultCors");
 
-// Services
-builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<ITransactionService, TransactionService>();
-builder.Services.AddScoped<CsvService>();
-builder.Services.AddScoped<XlsxService>();
-builder.Services.AddScoped<PdfService>();      // ← NEW: PDF parsing service
-builder.Services.AddScoped<CategoryPredictionService>();
-builder.Services.AddScoped<InsightsService>();
-builder.Services.AddScoped<IReportService, FinancialReportService>();
+    app.UseAuthentication();
+    app.UseAuthorization();
 
-// ObjectPool support for PredictionEngine thread safety
-builder.Services.AddSingleton<Microsoft.Extensions.ObjectPool.ObjectPoolProvider,
-    Microsoft.Extensions.ObjectPool.DefaultObjectPoolProvider>();
-// ML service — Singleton so the model trains only once at startup
-builder.Services.AddSingleton<RiskPredictionService>();
-builder.Services.AddScoped<RiskModelTrainer>();
-builder.Services.AddHostedService<ModelTrainingHostedService>();
+    app.MapControllers();
 
-// ─── BUILD ────────────────────────────────────────────────────────────────────
-var app = builder.Build();
-
-// Global exception handling must be registered first
-app.UseMiddleware<GlobalExceptionMiddleware>();
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    app.Run();
 }
-
-app.UseCors("DefaultCors");
-app.UseAuthentication();
-app.UseAuthorization();
-app.MapControllers();
-app.Run();
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Application terminated unexpectedly during startup.");
+}
+finally
+{
+    Log.CloseAndFlush();
+}
