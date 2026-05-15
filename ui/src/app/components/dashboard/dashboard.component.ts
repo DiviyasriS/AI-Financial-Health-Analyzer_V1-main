@@ -60,6 +60,7 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   // Flag to track whether the view is ready for chart rendering
   private viewReady = false;
   private dataReady = false;
+  downloadingReport = false;
 
   constructor(
     private dashboardService: DashboardService,
@@ -268,6 +269,34 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     };
     return map[type] ?? 'ℹ️';
   }
+
+
+  
+  downloadReport(): void {
+  this.downloadingReport = true;
+  this.error = '';
+  this.cdr.markForCheck();
+
+  this.dashboardService.downloadFinancialReport().subscribe({
+    next: (blob: Blob) => {
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+
+      anchor.href = url;
+      anchor.download = `financial-health-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+      anchor.click();
+
+      window.URL.revokeObjectURL(url);
+      this.downloadingReport = false;
+      this.cdr.markForCheck();
+    },
+    error: () => {
+      this.error = 'Failed to download PDF report. Please try again.';
+      this.downloadingReport = false;
+      this.cdr.markForCheck();
+    },
+  });
+}
 
   goToUpload(): void {
     this.router.navigate(['/upload']);

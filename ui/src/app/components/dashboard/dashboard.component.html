@@ -35,9 +35,23 @@
       <h1 class="db-title">Financial Dashboard</h1>
       <p class="db-subtitle">AI-powered spending analysis</p>
     </div>
-    <button (click)="goToUpload()" class="btn-upload">
-      <span>＋</span> Upload Statement
-    </button>
+   <div class="db-header-actions">
+ 
+ 
+    <button
+    (click)="downloadReport()"
+    class="btn-upload"
+    [disabled]="downloadingReport">
+    <span>⬇</span>
+    {{ downloadingReport ? 'Generating...' : 'Download PDF Report' }}
+  </button>
+
+  <button (click)="goToUpload()" class="btn-upload">
+    <span>＋</span> Upload Statement
+  </button>
+
+
+</div>
   </header>
 
   <!-- ── KPI strip ───────────────────────────────────────────────────── -->

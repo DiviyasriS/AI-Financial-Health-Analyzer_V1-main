@@ -78,4 +78,9 @@ toMonthlyBars(summary: DashboardSummary): MonthlyBar[] {
     };
   });
 }
+downloadFinancialReport(): Observable<Blob> {
+  return this.http.get(`${environment.apiUrl}/reports/financial/pdf`, {
+    responseType: 'blob'
+  });
+}
 }

@@ -3,8 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using QuestPDF.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
+QuestPDF.Settings.License = LicenseType.Community;
 
 // ─── CONTROLLERS ──────────────────────────────────────────────────────────────
 builder.Services.AddControllers();
@@ -114,7 +116,7 @@ builder.Services.AddScoped<XlsxService>();
 builder.Services.AddScoped<PdfService>();      // ← NEW: PDF parsing service
 builder.Services.AddScoped<CategoryPredictionService>();
 builder.Services.AddScoped<InsightsService>();
-
+builder.Services.AddScoped<IReportService, FinancialReportService>();
 
 // ObjectPool support for PredictionEngine thread safety
 builder.Services.AddSingleton<Microsoft.Extensions.ObjectPool.ObjectPoolProvider,
