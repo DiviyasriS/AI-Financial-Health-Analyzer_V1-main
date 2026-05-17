@@ -7,6 +7,7 @@ import { environment } from '../../environments/environment';
 export interface AuthResponseDto {
   token: string;
   email: string;
+  mobileNumber?: string | null;
   userId: number;
 }
 
@@ -19,6 +20,7 @@ export interface ApiResponse<T> {
 export interface RegisterRequest {
   email: string;
   password: string;
+  mobileNumber?: string;
 }
 
 export interface LoginRequest {
@@ -26,41 +28,41 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface SendOtpRequest {
+  mobileNumber: string;
+}
+
+export interface VerifyOtpRequest {
+  mobileNumber: string;
+  otp: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-
   private readonly apiUrl = `${environment.apiUrl}/auth`;
   private readonly TOKEN_KEY = 'auth_token';
-  private readonly USER_KEY  = 'auth_user';
+  private readonly USER_KEY = 'auth_user';
 
   constructor(private http: HttpClient) {}
 
   register(data: RegisterRequest): Observable<AuthResponseDto> {
-    return this.http
-      .post<ApiResponse<AuthResponseDto>>(`${this.apiUrl}/register`, data)
-      .pipe(
-        map(res => {
-          if (!res.success || !res.data) {
-            throw new Error(res.message || 'Registration failed');
-          }
-          this.saveSession(res.data);
-          return res.data;
-        })
-      );
+    return this.handleAuth(this.http.post<ApiResponse<AuthResponseDto>>(`${this.apiUrl}/register`, data));
   }
 
   login(data: LoginRequest): Observable<AuthResponseDto> {
-    return this.http
-      .post<ApiResponse<AuthResponseDto>>(`${this.apiUrl}/login`, data)
-      .pipe(
-        map(res => {
-          if (!res.success || !res.data) {
-            throw new Error(res.message || 'Login failed');
-          }
-          this.saveSession(res.data);
-          return res.data;
-        })
-      );
+    return this.handleAuth(this.http.post<ApiResponse<AuthResponseDto>>(`${this.apiUrl}/login`, data));
+  }
+
+  googleLogin(credential: string): Observable<AuthResponseDto> {
+    return this.handleAuth(this.http.post<ApiResponse<AuthResponseDto>>(`${this.apiUrl}/google`, { credential }));
+  }
+
+  sendOtp(data: SendOtpRequest): Observable<any> {
+  return this.http.post(`${this.apiUrl}/otp/send`, data);
+}
+
+  verifyOtp(data: VerifyOtpRequest): Observable<AuthResponseDto> {
+    return this.handleAuth(this.http.post<ApiResponse<AuthResponseDto>>(`${this.apiUrl}/otp/verify`, data));
   }
 
   logout(): void {
@@ -79,6 +81,18 @@ export class AuthService {
   getCurrentUser(): AuthResponseDto | null {
     const stored = localStorage.getItem(this.USER_KEY);
     return stored ? (JSON.parse(stored) as AuthResponseDto) : null;
+  }
+
+  private handleAuth(source$: Observable<ApiResponse<AuthResponseDto>>): Observable<AuthResponseDto> {
+    return source$.pipe(
+      map(res => {
+        if (!res.success || !res.data) {
+          throw new Error(res.message || 'Authentication failed');
+        }
+        this.saveSession(res.data);
+        return res.data;
+      })
+    );
   }
 
   private saveSession(data: AuthResponseDto): void {

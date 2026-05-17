@@ -1,122 +1,292 @@
+using Google.Apis.Auth;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 
 public class AuthService : IAuthService
 {
-    private readonly IUserRepository      _userRepository;
-    private readonly IConfiguration       _configuration;
+    private const string GoogleProvider = "Google";
+    private readonly IUserRepository _userRepository;
+    private readonly IOtpRepository _otpRepository;
+    private readonly IOtpSender _otpSender;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
-        IUserRepository      userRepository,
-        IConfiguration       configuration,
+        IUserRepository userRepository,
+        IOtpRepository otpRepository,
+        IOtpSender otpSender,
+        IConfiguration configuration,
         ILogger<AuthService> logger)
     {
         _userRepository = userRepository;
-        _configuration  = configuration;
-        _logger         = logger;
+        _otpRepository = otpRepository;
+        _otpSender = otpSender;
+        _configuration = configuration;
+        _logger = logger;
     }
-
-    // ── Register ──────────────────────────────────────────────────────────────
 
     public async Task<AuthResponseDto?> RegisterAsync(RegisterDto dto)
     {
-        var normalizedEmail = dto.Email.ToLower().Trim();
+        string normalizedEmail = NormalizeEmail(dto.Email);
+        string? normalizedMobile = NormalizeMobile(dto.MobileNumber);
 
-        // Fast pre-check (not race-condition-proof — DB unique index is the real guard)
         if (await _userRepository.EmailExistsAsync(normalizedEmail))
         {
-            _logger.LogDebug("Registration blocked — email already exists: {Email}", normalizedEmail);
+            _logger.LogDebug("Registration blocked because email already exists: {Email}", normalizedEmail);
             return null;
         }
 
-        var passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
-
-        var user = new User
+        if (!string.IsNullOrWhiteSpace(normalizedMobile) && await _userRepository.MobileNumberExistsAsync(normalizedMobile))
         {
-            Email        = normalizedEmail,
-            PasswordHash = passwordHash
+            _logger.LogDebug("Registration blocked because mobile already exists: {MobileNumber}", normalizedMobile);
+            return null;
+        }
+
+        User user = new()
+        {
+            Email = normalizedEmail,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
+            MobileNumber = normalizedMobile,
+            CreatedAtUtc = DateTime.UtcNow
         };
 
         try
         {
-            var createdUser = await _userRepository.CreateAsync(user);
+            User createdUser = await _userRepository.CreateAsync(user);
             _logger.LogInformation("New user created with ID {UserId}", createdUser.Id);
             return BuildAuthResponse(createdUser);
         }
-        catch (DbUpdateException ex)
-            when (ex.InnerException?.Message.Contains("Duplicate entry", StringComparison.OrdinalIgnoreCase) == true
-               || ex.InnerException?.Message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase) == true)
+        catch (DbUpdateException ex) when (IsDuplicateConstraint(ex))
         {
-            // FIX: Race condition — two simultaneous registrations with the same email.
-            // The pre-check above passed for both, but the DB unique index caught one.
-            // Treat as duplicate rather than letting it become an unhandled 500.
-            _logger.LogWarning("Registration race condition detected for email: {Email}", normalizedEmail);
+            _logger.LogWarning(ex, "Registration duplicate conflict for email/mobile.");
             return null;
         }
     }
 
-    // ── Login ─────────────────────────────────────────────────────────────────
-
     public async Task<AuthResponseDto?> LoginAsync(LoginDto dto)
     {
-        var normalizedEmail = dto.Email.ToLower().Trim();
-        var user = await _userRepository.GetByEmailAsync(normalizedEmail);
+        string normalizedEmail = NormalizeEmail(dto.Email);
+        User? user = await _userRepository.GetByEmailAsync(normalizedEmail);
 
-        if (user == null)
+        if (user is null || string.IsNullOrWhiteSpace(user.PasswordHash))
         {
-            // Use a constant-time-ish delay to avoid email enumeration timing attacks
-            _logger.LogDebug("Login failed — email not found: {Email}", normalizedEmail);
-            BCrypt.Net.BCrypt.Verify("dummy", "$2a$11$dummyhashtopreventtimingattacks00000000000000000000000");
+            BCrypt.Net.BCrypt.Verify("dummy", BCrypt.Net.BCrypt.HashPassword("dummy"));
+            _logger.LogWarning("Login failed for email: {Email}", normalizedEmail);
             return null;
         }
 
         if (!BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
         {
-            _logger.LogWarning("Login failed — invalid password for email: {Email}", normalizedEmail);
+            _logger.LogWarning("Login failed due to invalid password for email: {Email}", normalizedEmail);
             return null;
         }
 
-        _logger.LogInformation("User {UserId} authenticated successfully", user.Id);
+        user.LastLoginAtUtc = DateTime.UtcNow;
+        await _userRepository.UpdateAsync(user);
+        _logger.LogInformation("User {UserId} logged in with email/password.", user.Id);
         return BuildAuthResponse(user);
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    public async Task<AuthResponseDto?> GoogleLoginAsync(GoogleLoginDto dto)
+    {
+        string? clientId = _configuration["Authentication:Google:ClientId"];
+        if (string.IsNullOrWhiteSpace(clientId))
+        {
+            throw new InvalidOperationException("Google ClientId is not configured.");
+        }
+
+        GoogleJsonWebSignature.Payload payload;
+        try
+        {
+            payload = await GoogleJsonWebSignature.ValidateAsync(dto.Credential, new GoogleJsonWebSignature.ValidationSettings
+            {
+                Audience = new[] { clientId }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Invalid Google Sign-In credential received.");
+            return null;
+        }
+
+        if (!payload.EmailVerified)
+        {
+            _logger.LogWarning("Google login rejected because email is not verified: {Email}", payload.Email);
+            return null;
+        }
+
+        string normalizedEmail = NormalizeEmail(payload.Email);
+        User? user = await _userRepository.GetByProviderAsync(GoogleProvider, payload.Subject)
+                     ?? await _userRepository.GetByEmailAsync(normalizedEmail);
+
+        if (user is null)
+        {
+            user = await _userRepository.CreateAsync(new User
+            {
+                Email = normalizedEmail,
+                PasswordHash = string.Empty,
+                IsEmailVerified = true,
+                CreatedAtUtc = DateTime.UtcNow
+            });
+        }
+        else if (!user.IsEmailVerified)
+        {
+            user.IsEmailVerified = true;
+            await _userRepository.UpdateAsync(user);
+        }
+
+        User? alreadyLinkedUser = await _userRepository.GetByProviderAsync(GoogleProvider, payload.Subject);
+        if (alreadyLinkedUser is null)
+        {
+            await _userRepository.AddProviderAsync(new AuthProvider
+            {
+                UserId = user.Id,
+                ProviderName = GoogleProvider,
+                ProviderUserId = payload.Subject,
+                ProviderEmail = normalizedEmail
+            });
+        }
+
+        user.LastLoginAtUtc = DateTime.UtcNow;
+        await _userRepository.UpdateAsync(user);
+        _logger.LogInformation("User {UserId} logged in with Google.", user.Id);
+        return BuildAuthResponse(user);
+    }
+
+    public async Task<bool> SendMobileOtpAsync(SendOtpDto dto)
+    {
+        string mobileNumber = NormalizeMobile(dto.MobileNumber) ?? string.Empty;
+        string otp = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+
+        OtpRequest request = new()
+        {
+            MobileNumber = mobileNumber,
+            OtpHash = BCrypt.Net.BCrypt.HashPassword(otp),
+            ExpiresAtUtc = DateTime.UtcNow.AddMinutes(_configuration.GetValue<int>("Otp:ExpiryMinutes", 5))
+        };
+
+        await _otpRepository.CreateAsync(request);
+        await _otpSender.SendOtpAsync(mobileNumber, otp);
+        _logger.LogInformation("OTP generated for mobile login: {MobileNumber}", mobileNumber);
+        return true;
+    }
+
+    public async Task<AuthResponseDto?> VerifyMobileOtpAsync(VerifyOtpDto dto)
+    {
+        string mobileNumber = NormalizeMobile(dto.MobileNumber) ?? string.Empty;
+        OtpRequest? otpRequest = await _otpRepository.GetLatestActiveAsync(mobileNumber);
+
+        if (otpRequest is null)
+        {
+            _logger.LogWarning("OTP verification failed because no active OTP exists for {MobileNumber}.", mobileNumber);
+            return null;
+        }
+
+        int maxAttempts = _configuration.GetValue<int>("Otp:MaxAttempts", 5);
+        if (otpRequest.FailedAttempts >= maxAttempts)
+        {
+            _logger.LogWarning("OTP verification blocked after max attempts for {MobileNumber}.", mobileNumber);
+            return null;
+        }
+
+        if (!BCrypt.Net.BCrypt.Verify(dto.Otp, otpRequest.OtpHash))
+        {
+            otpRequest.FailedAttempts++;
+            await _otpRepository.UpdateAsync(otpRequest);
+            _logger.LogWarning("Invalid OTP attempt for {MobileNumber}.", mobileNumber);
+            return null;
+        }
+
+        otpRequest.UsedAtUtc = DateTime.UtcNow;
+        await _otpRepository.UpdateAsync(otpRequest);
+
+        User? user = await _userRepository.GetByMobileNumberAsync(mobileNumber);
+        if (user is null)
+        {
+            string syntheticEmail = $"mobile-{mobileNumber.Replace("+", string.Empty)}@local.auth";
+            user = await _userRepository.CreateAsync(new User
+            {
+                Email = syntheticEmail,
+                PasswordHash = string.Empty,
+                MobileNumber = mobileNumber,
+                IsMobileVerified = true,
+                CreatedAtUtc = DateTime.UtcNow
+            });
+        }
+        else if (!user.IsMobileVerified)
+        {
+            user.IsMobileVerified = true;
+            await _userRepository.UpdateAsync(user);
+        }
+
+        user.LastLoginAtUtc = DateTime.UtcNow;
+        await _userRepository.UpdateAsync(user);
+        _logger.LogInformation("User {UserId} logged in with mobile OTP.", user.Id);
+        return BuildAuthResponse(user);
+    }
 
     private AuthResponseDto BuildAuthResponse(User user) => new()
     {
-        Token  = GenerateJwtToken(user),
-        Email  = user.Email,
+        Token = GenerateJwtToken(user),
+        Email = user.Email,
+        MobileNumber = user.MobileNumber,
         UserId = user.Id
     };
 
     private string GenerateJwtToken(User user)
     {
-        var jwtKey = _configuration["Jwt:Key"]!;   // validated at startup in Program.cs
-        var keyBytes          = Encoding.UTF8.GetBytes(jwtKey);
-        var signingCredentials = new SigningCredentials(
-            new SymmetricSecurityKey(keyBytes),
+        string jwtKey = _configuration["Jwt:Key"]!;
+        SigningCredentials signingCredentials = new(
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
             SecurityAlgorithms.HmacSha256);
 
-        var expiryDays = _configuration.GetValue<int>("Jwt:ExpiryDays", 7);
-
-        var claims = new[]
+        int expiryDays = _configuration.GetValue<int>("Jwt:ExpiryDays", 7);
+        List<Claim> claims = new()
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Email, user.Email),
             new Claim("userId", user.Id.ToString())
         };
 
-        var token = new JwtSecurityToken(
-            issuer:             _configuration["Jwt:Issuer"],
-            audience:           _configuration["Jwt:Audience"],
-            claims:             claims,
-            expires:            DateTime.UtcNow.AddDays(expiryDays),
+        if (!string.IsNullOrWhiteSpace(user.MobileNumber))
+        {
+            claims.Add(new Claim(ClaimTypes.MobilePhone, user.MobileNumber));
+        }
+
+        JwtSecurityToken token = new(
+            issuer: _configuration["Jwt:Issuer"],
+            audience: _configuration["Jwt:Audience"],
+            claims: claims,
+            expires: DateTime.UtcNow.AddDays(expiryDays),
             signingCredentials: signingCredentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
+
+    private static string? NormalizeMobile(string? mobileNumber)
+    {
+        if (string.IsNullOrWhiteSpace(mobileNumber))
+        {
+            return null;
+        }
+
+        string normalized = Regex.Replace(mobileNumber.Trim(), @"[\s-]", string.Empty);
+        return normalized.StartsWith('+') ? normalized : $"+91{normalized}";
+    }
+
+    private static bool IsDuplicateConstraint(DbUpdateException ex)
+    {
+        string message = ex.InnerException?.Message ?? ex.Message;
+        return message.Contains("Duplicate entry", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("IX_Users_Email", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("IX_Users_MobileNumber", StringComparison.OrdinalIgnoreCase);
     }
 }

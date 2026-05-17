@@ -11,6 +11,8 @@ public class AppDbContext : DbContext
     public DbSet<Insight> Insights { get; set; }
 
     public DbSet<RiskPrediction> RiskPredictions { get; set; }
+    public DbSet<AuthProvider> AuthProviders { get; set; }
+    public DbSet<OtpRequest> OtpRequests { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -20,6 +22,23 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<User>()
             .HasIndex(u => u.Email)
             .IsUnique();
+
+        modelBuilder.Entity<User>()
+            .HasIndex(u => u.MobileNumber)
+            .IsUnique();
+
+        modelBuilder.Entity<AuthProvider>()
+            .HasIndex(p => new { p.ProviderName, p.ProviderUserId })
+            .IsUnique();
+
+        modelBuilder.Entity<AuthProvider>()
+            .HasOne(p => p.User)
+            .WithMany()
+            .HasForeignKey(p => p.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<OtpRequest>()
+            .HasIndex(o => new { o.MobileNumber, o.ExpiresAtUtc });
 
         // Correct decimal precision for currency
         modelBuilder.Entity<Transaction>()

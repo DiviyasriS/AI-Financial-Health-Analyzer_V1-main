@@ -11,11 +11,11 @@ import { AuthService } from '../../services/auth.service';
   templateUrl: './register.component.html'
 })
 export class RegisterComponent {
-
-  email     = '';
-  password  = '';
-  error     = '';
-  loading   = false;
+  email = '';
+  password = '';
+  mobileNumber = '';
+  error = '';
+  loading = false;
 
   constructor(
     private authService: AuthService,
@@ -24,7 +24,7 @@ export class RegisterComponent {
 
   onSubmit(): void {
     if (!this.email || !this.password) {
-      this.error = 'Please fill in all fields.';
+      this.error = 'Please fill in email and password.';
       return;
     }
 
@@ -34,21 +34,23 @@ export class RegisterComponent {
     }
 
     this.loading = true;
-    this.error   = '';
+    this.error = '';
 
-    this.authService.register({ email: this.email, password: this.password })
-      .subscribe({
-        next: () => {
-          this.loading = false;
-          // Go to upload page after registration
-          this.router.navigate(['/upload']);
-        },
-        error: (err) => {
-          this.loading = false;
-          this.error = err.status === 409
-            ? 'An account with this email already exists.'
-            : 'Registration failed. Please try again.';
-        }
-      });
+    this.authService.register({
+      email: this.email,
+      password: this.password,
+      mobileNumber: this.mobileNumber || undefined
+    }).subscribe({
+      next: () => {
+        this.loading = false;
+        this.router.navigate(['/upload']);
+      },
+      error: (err) => {
+        this.loading = false;
+        this.error = err.status === 409
+          ? 'An account with this email or mobile number already exists.'
+          : 'Registration failed. Please try again.';
+      }
+    });
   }
 }

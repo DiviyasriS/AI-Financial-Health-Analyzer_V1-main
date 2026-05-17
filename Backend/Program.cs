@@ -119,11 +119,13 @@ try
     });
 
     builder.Services.AddScoped<IUserRepository, UserRepository>();
+    builder.Services.AddScoped<IOtpRepository, OtpRepository>();
     builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
     builder.Services.AddScoped<IRiskPredictionRepository, RiskPredictionRepository>();
     builder.Services.AddScoped<IInsightRepository, InsightRepository>();
 
     builder.Services.AddScoped<IAuthService, AuthService>();
+    builder.Services.AddScoped<IOtpSender, DevelopmentOtpSender>();
     builder.Services.AddScoped<ITransactionService, TransactionService>();
     builder.Services.AddScoped<CsvService>();
     builder.Services.AddScoped<XlsxService>();

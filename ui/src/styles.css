@@ -290,3 +290,44 @@ a:hover { text-decoration: underline; }
     gap: 12px;
   }
 }
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0;
+  color: #6b7280;
+  font-size: 14px;
+  text-align: center;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+
+.google-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.otp-title {
+  margin: 0 0 14px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.optional {
+  font-weight: 400;
+  color: #6b7280;
+}
+.helper-text {
+  margin-top: -8px;
+  margin-bottom: 22px;
+  font-size: 13px;
+  color: #6b7280;
+}

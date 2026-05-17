@@ -13,24 +13,51 @@ public class UserRepository : IUserRepository
         _context = context;
     }
 
-
     public async Task<User?> GetByEmailAsync(string email)
     {
-        return await _context.Users
-            .FirstOrDefaultAsync(u => u.Email == email);
+        return await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+    }
+
+    public async Task<User?> GetByMobileNumberAsync(string mobileNumber)
+    {
+        return await _context.Users.FirstOrDefaultAsync(u => u.MobileNumber == mobileNumber);
+    }
+
+    public async Task<User?> GetByProviderAsync(string providerName, string providerUserId)
+    {
+        return await _context.AuthProviders
+            .Where(p => p.ProviderName == providerName && p.ProviderUserId == providerUserId)
+            .Select(p => p.User)
+            .FirstOrDefaultAsync();
     }
 
     public async Task<User> CreateAsync(User user)
     {
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
-        // After SaveChangesAsync, EF Core populates user.Id automatically
         return user;
     }
 
     public async Task<bool> EmailExistsAsync(string email)
     {
-        return await _context.Users
-            .AnyAsync(u => u.Email == email);
+        return await _context.Users.AnyAsync(u => u.Email == email);
+    }
+
+    public async Task<bool> MobileNumberExistsAsync(string mobileNumber)
+    {
+        return await _context.Users.AnyAsync(u => u.MobileNumber == mobileNumber);
+    }
+
+    public async Task<AuthProvider> AddProviderAsync(AuthProvider provider)
+    {
+        _context.AuthProviders.Add(provider);
+        await _context.SaveChangesAsync();
+        return provider;
+    }
+
+    public async Task UpdateAsync(User user)
+    {
+        _context.Users.Update(user);
+        await _context.SaveChangesAsync();
     }
 }
