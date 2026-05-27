@@ -64,6 +64,15 @@ try
         });
     });
 
+    if (builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddDbContext<AppDbContext>(options =>
+    {
+        options.UseInMemoryDatabase("FinancialHealthAnalyzerTestDb");
+    });
+}
+else
+{
     string? connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
     if (string.IsNullOrWhiteSpace(connectionString))
@@ -76,13 +85,19 @@ try
     {
         options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
     });
+}
 
-    string? jwtKey = builder.Configuration["Jwt:Key"];
+   string? jwtKey = builder.Configuration["Jwt:Key"];
 
-    if (string.IsNullOrWhiteSpace(jwtKey))
-    {
-        throw new InvalidOperationException("Jwt:Key is missing or empty.");
-    }
+if (builder.Environment.IsEnvironment("Testing") && string.IsNullOrWhiteSpace(jwtKey))
+{
+    jwtKey = "this-is-a-super-secret-test-jwt-key-123456";
+}
+
+if (string.IsNullOrWhiteSpace(jwtKey))
+{
+    throw new InvalidOperationException("Jwt:Key is missing or empty.");
+}
 
     if (jwtKey.Length < 32)
     {
@@ -190,3 +205,4 @@ finally
 {
     Log.CloseAndFlush();
 }
+public partial class Program { }
