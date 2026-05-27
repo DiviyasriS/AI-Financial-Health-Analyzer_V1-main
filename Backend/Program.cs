@@ -154,8 +154,10 @@ if (string.IsNullOrWhiteSpace(jwtKey))
 
     builder.Services.AddSingleton<RiskPredictionService>();
     builder.Services.AddScoped<RiskModelTrainer>();
+    if (!builder.Environment.IsEnvironment("Testing"))
+{
     builder.Services.AddHostedService<ModelTrainingHostedService>();
-
+}
     WebApplication app = builder.Build();
 
     app.UseMiddleware<GlobalExceptionMiddleware>();
