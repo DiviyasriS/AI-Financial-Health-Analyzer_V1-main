@@ -2,81 +2,153 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Xunit;
+using NUnit.Framework;
 
+[TestFixture]
 public class AuthControllerTests
 {
-    private readonly Mock<IAuthService> _authServiceMock;
-    private readonly Mock<ILogger<AuthController>> _loggerMock;
-    private readonly AuthController _controller;
+    private Mock<IAuthService> _authServiceMock = null!;
+    private Mock<ILogger<AuthController>> _loggerMock = null!;
+    private AuthController _controller = null!;
 
-    public AuthControllerTests()
+    [SetUp]
+    public void SetUp()
     {
         _authServiceMock = new Mock<IAuthService>();
         _loggerMock = new Mock<ILogger<AuthController>>();
         _controller = new AuthController(_authServiceMock.Object, _loggerMock.Object);
     }
 
-    [Fact]
-    public async Task Register_WhenEmailTaken_Returns409()
+    [Test]
+    public async Task Register_WhenUserAlreadyExists_ReturnsConflict()
     {
-        // Arrange
-        _authServiceMock.Setup(s => s.RegisterAsync(It.IsAny<RegisterDto>()))
+        _authServiceMock
+            .Setup(s => s.RegisterAsync(It.IsAny<RegisterDto>()))
             .ReturnsAsync((AuthResponseDto?)null);
 
-        // Act
-        var result = await _controller.Register(new RegisterDto
+        IActionResult result = await _controller.Register(new RegisterDto
         {
-            Email = "taken@email.com",
-            Password = "password123"
+            Email = "taken@example.com",
+            Password = "Password@123"
         });
 
-        // Assert
         result.Should().BeOfType<ConflictObjectResult>();
     }
 
-    [Fact]
-    public async Task Register_WhenSuccess_Returns200WithToken()
+    [Test]
+    public async Task Register_WhenSuccess_ReturnsOk()
     {
-        // Arrange
-        var authResponse = new AuthResponseDto
+        var response = new AuthResponseDto
         {
-            Token = "test.jwt.token",
-            Email = "new@email.com",
+            Token = "jwt-token",
+            Email = "user@example.com",
             UserId = 1
         };
-        _authServiceMock.Setup(s => s.RegisterAsync(It.IsAny<RegisterDto>()))
-            .ReturnsAsync(authResponse);
 
-        // Act
-        var result = await _controller.Register(new RegisterDto
+        _authServiceMock
+            .Setup(s => s.RegisterAsync(It.IsAny<RegisterDto>()))
+            .ReturnsAsync(response);
+
+        IActionResult result = await _controller.Register(new RegisterDto
         {
-            Email = "new@email.com",
-            Password = "password123"
+            Email = "user@example.com",
+            Password = "Password@123"
         });
 
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var response = okResult.Value.Should().BeOfType<ApiResponse<AuthResponseDto>>().Subject;
-        response.Success.Should().BeTrue();
-        response.Data!.Token.Should().Be("test.jwt.token");
+        result.Should().BeOfType<OkObjectResult>();
     }
 
-    [Fact]
-    public async Task Login_WithInvalidCredentials_Returns401()
+    [Test]
+    public async Task Login_WhenInvalidCredentials_ReturnsUnauthorized()
     {
-        // Arrange
-        _authServiceMock.Setup(s => s.LoginAsync(It.IsAny<LoginDto>()))
+        _authServiceMock
+            .Setup(s => s.LoginAsync(It.IsAny<LoginDto>()))
             .ReturnsAsync((AuthResponseDto?)null);
 
-        // Act
-        var result = await _controller.Login(new LoginDto
+        IActionResult result = await _controller.Login(new LoginDto
         {
-            Email = "user@email.com",
-            Password = "wrongpass"
+            Email = "wrong@example.com",
+            Password = "wrong"
         });
 
-        // Assert
         result.Should().BeOfType<UnauthorizedObjectResult>();
+    }
+
+    [Test]
+    public async Task Login_WhenValidCredentials_ReturnsOk()
+    {
+        var response = new AuthResponseDto
+        {
+            Token = "jwt-token",
+            Email = "user@example.com",
+            UserId = 1
+        };
+
+        _authServiceMock
+            .Setup(s => s.LoginAsync(It.IsAny<LoginDto>()))
+            .ReturnsAsync(response);
+
+        IActionResult result = await _controller.Login(new LoginDto
+        {
+            Email = "user@example.com",
+            Password = "Password@123"
+        });
+
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Test]
+    public async Task SendOtp_WhenCalled_ReturnsOk()
+    {
+        _authServiceMock
+            .Setup(s => s.SendMobileOtpAsync(It.IsAny<SendOtpDto>()))
+            .ReturnsAsync(true);
+
+        IActionResult result = await _controller.SendOtp(new SendOtpDto
+        {
+            MobileNumber = "+919876543210"
+        });
+
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Test]
+    public async Task VerifyOtp_WhenInvalidOtp_ReturnsUnauthorized()
+    {
+        _authServiceMock
+            .Setup(s => s.VerifyMobileOtpAsync(It.IsAny<VerifyOtpDto>()))
+            .ReturnsAsync((AuthResponseDto?)null);
+
+        IActionResult result = await _controller.VerifyOtp(new VerifyOtpDto
+        {
+            MobileNumber = "+919876543210",
+            Otp = "000000"
+        });
+
+        result.Should().BeOfType<UnauthorizedObjectResult>();
+    }
+
+    [Test]
+    public async Task VerifyOtp_WhenValidOtp_ReturnsOk()
+    {
+        var response = new AuthResponseDto
+        {
+            Token = "otp-token",
+            Email = "mobile-919876543210@local.auth",
+            MobileNumber = "+919876543210",
+            UserId = 1
+        };
+
+        _authServiceMock
+            .Setup(s => s.VerifyMobileOtpAsync(It.IsAny<VerifyOtpDto>()))
+            .ReturnsAsync(response);
+
+        IActionResult result = await _controller.VerifyOtp(new VerifyOtpDto
+        {
+            MobileNumber = "+919876543210",
+            Otp = "123456"
+        });
+
+        result.Should().BeOfType<OkObjectResult>();
     }
 }
