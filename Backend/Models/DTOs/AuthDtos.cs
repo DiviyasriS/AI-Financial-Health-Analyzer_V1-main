@@ -55,3 +55,35 @@ public class AuthResponseDto
     public string? MobileNumber { get; set; }
     public int UserId { get; set; }
 }
+
+
+public class UserProfileDto
+{
+    public int UserId { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string? MobileNumber { get; set; }
+    public bool IsEmailVerified { get; set; }
+    public bool IsMobileVerified { get; set; }
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime? LastLoginAtUtc { get; set; }
+}
+
+public class UpdateUserProfileDto
+{
+    [Required(ErrorMessage = "Email is required.")]
+    [EmailAddress(ErrorMessage = "Invalid email format.")]
+    public string Email { get; set; } = string.Empty;
+
+    [Phone(ErrorMessage = "Invalid mobile number.")]
+    public string? MobileNumber { get; set; }
+}
+
+public class ChangePasswordDto
+{
+    [Required(ErrorMessage = "Current password is required.")]
+    public string CurrentPassword { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "New password is required.")]
+    [MinLength(6, ErrorMessage = "New password must be at least 6 characters.")]
+    public string NewPassword { get; set; } = string.Empty;
+}

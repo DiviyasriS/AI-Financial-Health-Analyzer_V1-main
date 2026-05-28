@@ -1,0 +1,47 @@
+<div class="profile-container">
+  <div class="profile-card">
+    <h2>User Profile</h2>
+    <p class="subtitle">Manage your account details and password</p>
+
+    <div *ngIf="loading" class="info">Loading profile...</div>
+    <div *ngIf="error" class="alert alert-error">{{ error }}</div>
+    <div *ngIf="success" class="alert alert-success">{{ success }}</div>
+
+    <form *ngIf="!loading" (ngSubmit)="updateProfile()" class="section">
+      <h3>Profile Details</h3>
+
+      <label>Email</label>
+      <input type="email" [(ngModel)]="email" name="email" />
+
+      <label>Mobile Number</label>
+      <input type="text" [(ngModel)]="mobileNumber" name="mobileNumber" />
+
+      <div *ngIf="profile" class="meta">
+        <p>Email verified: {{ profile.isEmailVerified ? 'Yes' : 'No' }}</p>
+        <p>Mobile verified: {{ profile.isMobileVerified ? 'Yes' : 'No' }}</p>
+        <p>Created: {{ profile.createdAtUtc | date:'medium' }}</p>
+      </div>
+
+      <button type="submit" [disabled]="savingProfile">
+        {{ savingProfile ? 'Saving...' : 'Update Profile' }}
+      </button>
+    </form>
+
+    <form *ngIf="!loading" (ngSubmit)="changePassword()" class="section">
+      <h3>Change Password</h3>
+
+      <label>Current Password</label>
+      <input type="password" [(ngModel)]="currentPassword" name="currentPassword" />
+
+      <label>New Password</label>
+      <input type="password" [(ngModel)]="newPassword" name="newPassword" />
+
+      <label>Confirm New Password</label>
+      <input type="password" [(ngModel)]="confirmPassword" name="confirmPassword" />
+
+      <button type="submit" [disabled]="changingPassword">
+        {{ changingPassword ? 'Changing...' : 'Change Password' }}
+      </button>
+    </form>
+  </div>
+</div>

@@ -4,6 +4,7 @@ import { RegisterComponent } from './components/register/register.component';
 import { UploadComponent } from './components/upload/upload.component';
 import { DashboardComponent } from './components/dashboard/dashboard.component';
 import { authGuard } from './guards/auth-guard';
+import { ProfileComponent } from './components/profile/profile.component';
 
 export const routes: Routes = [
   // Default route — redirect to login
@@ -16,7 +17,11 @@ export const routes: Routes = [
   // Protected routes — require valid JWT
   { path: 'upload',    component: UploadComponent,    canActivate: [authGuard] },
   { path: 'dashboard', component: DashboardComponent, canActivate: [authGuard] },
+  { path: 'profile', component: ProfileComponent, canActivate: [authGuard] },
 
   // Catch-all — redirect unknown routes to login
   { path: '**', redirectTo: 'login' }
+
+
+  
 ];

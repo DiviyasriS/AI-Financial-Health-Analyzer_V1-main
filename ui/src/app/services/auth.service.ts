@@ -37,6 +37,26 @@ export interface VerifyOtpRequest {
   otp: string;
 }
 
+export interface UserProfileDto {
+  userId: number;
+  email: string;
+  mobileNumber?: string | null;
+  isEmailVerified: boolean;
+  isMobileVerified: boolean;
+  createdAtUtc: string;
+  lastLoginAtUtc?: string | null;
+}
+
+export interface UpdateUserProfileRequest {
+  email: string;
+  mobileNumber?: string | null;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly apiUrl = `${environment.apiUrl}/auth`;
@@ -82,6 +102,52 @@ export class AuthService {
     const stored = localStorage.getItem(this.USER_KEY);
     return stored ? (JSON.parse(stored) as AuthResponseDto) : null;
   }
+
+
+  getProfile(): Observable<UserProfileDto> {
+  return this.http
+    .get<ApiResponse<UserProfileDto>>(`${this.apiUrl}/profile`)
+    .pipe(
+      map(res => {
+        if (!res.success || !res.data) {
+          throw new Error(res.message || 'Failed to fetch profile');
+        }
+
+        return res.data;
+      })
+    );
+}
+
+updateProfile(data: UpdateUserProfileRequest): Observable<UserProfileDto> {
+  return this.http
+    .put<ApiResponse<UserProfileDto>>(`${this.apiUrl}/profile`, data)
+    .pipe(
+      map(res => {
+        if (!res.success || !res.data) {
+          throw new Error(res.message || 'Failed to update profile');
+        }
+
+        const currentUser = this.getCurrentUser();
+
+        if (currentUser) {
+          localStorage.setItem(
+            this.USER_KEY,
+            JSON.stringify({
+              ...currentUser,
+              email: res.data.email,
+              mobileNumber: res.data.mobileNumber
+            })
+          );
+        }
+
+        return res.data;
+      })
+    );
+}
+
+changePassword(data: ChangePasswordRequest): Observable<ApiResponse<object>> {
+  return this.http.put<ApiResponse<object>>(`${this.apiUrl}/change-password`, data);
+}
 
   private handleAuth(source$: Observable<ApiResponse<AuthResponseDto>>): Observable<AuthResponseDto> {
     return source$.pipe(

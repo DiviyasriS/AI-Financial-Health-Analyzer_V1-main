@@ -229,6 +229,92 @@ public class AuthService : IAuthService
         _logger.LogInformation("User {UserId} logged in with mobile OTP.", user.Id);
         return BuildAuthResponse(user);
     }
+    public async Task<UserProfileDto?> GetProfileAsync(int userId)
+{
+    User? user = await _userRepository.GetByIdAsync(userId);
+
+    if (user is null)
+    {
+        return null;
+    }
+
+    return BuildUserProfile(user);
+}
+
+public async Task<UserProfileDto?> UpdateProfileAsync(int userId, UpdateUserProfileDto dto)
+{
+    User? user = await _userRepository.GetByIdAsync(userId);
+
+    if (user is null)
+    {
+        return null;
+    }
+
+    string normalizedEmail = NormalizeEmail(dto.Email);
+    string? normalizedMobile = NormalizeMobile(dto.MobileNumber);
+
+    if (await _userRepository.EmailExistsForOtherUserAsync(normalizedEmail, userId))
+    {
+        _logger.LogWarning("Profile update blocked because email already exists: {Email}", normalizedEmail);
+        return null;
+    }
+
+    if (!string.IsNullOrWhiteSpace(normalizedMobile) &&
+        await _userRepository.MobileNumberExistsForOtherUserAsync(normalizedMobile, userId))
+    {
+        _logger.LogWarning("Profile update blocked because mobile already exists: {MobileNumber}", normalizedMobile);
+        return null;
+    }
+
+    user.Email = normalizedEmail;
+    user.MobileNumber = normalizedMobile;
+
+    await _userRepository.UpdateAsync(user);
+
+    _logger.LogInformation("User {UserId} updated profile.", userId);
+
+    return BuildUserProfile(user);
+}
+
+public async Task<bool> ChangePasswordAsync(int userId, ChangePasswordDto dto)
+{
+    User? user = await _userRepository.GetByIdAsync(userId);
+
+    if (user is null)
+    {
+        return false;
+    }
+
+    if (string.IsNullOrWhiteSpace(user.PasswordHash))
+    {
+        _logger.LogWarning("Password change failed because user {UserId} has no password login.", userId);
+        return false;
+    }
+
+    if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
+    {
+        _logger.LogWarning("Password change failed due to wrong current password for user {UserId}.", userId);
+        return false;
+    }
+
+    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+    await _userRepository.UpdateAsync(user);
+
+    _logger.LogInformation("User {UserId} changed password.", userId);
+
+    return true;
+}
+
+private static UserProfileDto BuildUserProfile(User user) => new()
+{
+    UserId = user.Id,
+    Email = user.Email,
+    MobileNumber = user.MobileNumber,
+    IsEmailVerified = user.IsEmailVerified,
+    IsMobileVerified = user.IsMobileVerified,
+    CreatedAtUtc = user.CreatedAtUtc,
+    LastLoginAtUtc = user.LastLoginAtUtc
+};
 
     private AuthResponseDto BuildAuthResponse(User user) => new()
     {

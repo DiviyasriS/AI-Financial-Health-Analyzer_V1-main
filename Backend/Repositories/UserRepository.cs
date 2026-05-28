@@ -60,4 +60,19 @@ public class UserRepository : IUserRepository
         _context.Users.Update(user);
         await _context.SaveChangesAsync();
     }
+    
+    public async Task<User?> GetByIdAsync(int userId)
+{
+    return await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+}
+
+public async Task<bool> EmailExistsForOtherUserAsync(string email, int userId)
+{
+    return await _context.Users.AnyAsync(u => u.Email == email && u.Id != userId);
+}
+
+public async Task<bool> MobileNumberExistsForOtherUserAsync(string mobileNumber, int userId)
+{
+    return await _context.Users.AnyAsync(u => u.MobileNumber == mobileNumber && u.Id != userId);
+}
 }
