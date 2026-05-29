@@ -18,5 +18,8 @@ public class Transaction
 
     public string Category { get; set; } = string.Empty;  // add default
 
+    public bool IsCredit { get; set; } = false;  // true = money received, false = money sent
+
+
     public int UserId { get; set; }
 }

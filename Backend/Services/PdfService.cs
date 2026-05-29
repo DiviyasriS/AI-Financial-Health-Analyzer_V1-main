@@ -7,70 +7,43 @@ public class PdfService
 {
     private readonly ILogger<PdfService> _logger;
 
-    private static readonly string[] DateFormats =
+    private static readonly Regex PaytmStatementRangeRegex = new(
+        @"Paytm\s+Statement\s+for\s+(?<fromDay>\d{1,2})\s+(?<fromMonth>[A-Za-z]{3})'?\s*(?<fromYear>\d{2,4})\s*-\s*(?<toDay>\d{1,2})\s+(?<toMonth>[A-Za-z]{3})'?\s*(?<toYear>\d{2,4})",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    // Matches date+time on the SAME line e.g. "28 May 6:02 PM" or "21 May 9:44 AM"
+    private static readonly Regex PaytmDateLineRegex = new(
+        @"^(?<day>\d{1,2})\s+(?<month>Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex PaytmAmountRegex = new(
+        @"(?<sign>[+-])\s*(?:Rs\.?|₹|INR)\s*(?<amount>\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex AnyAmountRegex = new(
+        @"(?:Rs\.?|₹|INR)\s*(?<amount>\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    // Used to skip standalone time lines e.g. "10:05 AM" on its own row
+    private static readonly Regex TimeLineRegex = new(
+        @"^\d{1,2}:\d{2}\s*(AM|PM)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex BankLineRegex = new(
+        @"^(City Union|Indian Bank)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex UpsertSpacesRegex = new(@"\s+", RegexOptions.Compiled);
+
+    private static readonly Dictionary<string, string> CategoryAliases = new(StringComparer.OrdinalIgnoreCase)
     {
-        "dd/MM/yyyy", "d/M/yyyy",
-        "MM/dd/yyyy", "M/d/yyyy",
-        "yyyy-MM-dd", "yyyy/MM/dd",
-        "dd-MM-yyyy", "d-M-yyyy",
-
-        "dd MMM yyyy", "d MMM yyyy",
-        "dd MMM, yyyy", "d MMM, yyyy",
-        "dd-MMM-yyyy", "d-MMM-yyyy",
-        "MMM dd yyyy", "MMM d yyyy",
-        "MMM dd, yyyy", "MMM d, yyyy",
-
-        "dd/MM/yy", "d/M/yy",
-        "MM/dd/yy", "M/d/yy",
-
-        "dd/MM/yyyy HH:mm:ss", "d/M/yyyy HH:mm:ss",
-        "dd/MM/yyyy HH:mm", "d/M/yyyy HH:mm",
-        "dd/MM/yyyy h:mm:ss tt", "d/M/yyyy h:mm:ss tt",
-        "dd/MM/yyyy h:mm tt", "d/M/yyyy h:mm tt",
-
-        "dd-MM-yyyy HH:mm:ss", "d-M-yyyy HH:mm:ss",
-        "dd-MM-yyyy HH:mm", "d-M-yyyy HH:mm",
-        "dd-MM-yyyy h:mm:ss tt", "d-M-yyyy h:mm:ss tt",
-        "dd-MM-yyyy h:mm tt", "d-M-yyyy h:mm tt",
-
-        "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm",
-        "yyyy-MM-dd h:mm:ss tt", "yyyy-MM-dd h:mm tt",
-
-        "dd MMM yyyy HH:mm:ss", "d MMM yyyy HH:mm:ss",
-        "dd MMM yyyy HH:mm", "d MMM yyyy HH:mm",
-        "dd MMM yyyy h:mm:ss tt", "d MMM yyyy h:mm:ss tt",
-        "dd MMM yyyy h:mm tt", "d MMM yyyy h:mm tt",
-
-        "dd MMM, yyyy HH:mm:ss", "d MMM, yyyy HH:mm:ss",
-        "dd MMM, yyyy HH:mm", "d MMM, yyyy HH:mm",
-        "dd MMM, yyyy h:mm:ss tt", "d MMM, yyyy h:mm:ss tt",
-        "dd MMM, yyyy h:mm tt", "d MMM, yyyy h:mm tt",
-
-        "MMM dd yyyy HH:mm:ss", "MMM d yyyy HH:mm:ss",
-        "MMM dd yyyy HH:mm", "MMM d yyyy HH:mm",
-        "MMM dd yyyy h:mm:ss tt", "MMM d yyyy h:mm:ss tt",
-        "MMM dd yyyy h:mm tt", "MMM d yyyy h:mm tt",
-
-        "MMM dd, yyyy HH:mm:ss", "MMM d, yyyy HH:mm:ss",
-        "MMM dd, yyyy HH:mm", "MMM d, yyyy HH:mm",
-        "MMM dd, yyyy h:mm:ss tt", "MMM d, yyyy h:mm:ss tt",
-        "MMM dd, yyyy h:mm tt", "MMM d, yyyy h:mm tt"
-    };
-
-    private static readonly Regex LeadingDateTimeRegex = new(
-        @"^\s*(?<date>(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}\s+[A-Za-z]{3,9},?\s+\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4})(?:[,\s]+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM|am|pm)?)?)\b",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex AmountRegex = new(
-        @"^[(\-+]?\s*(?:₹|rs\.?|inr)?\s*[\d,\.]+\s*(?:cr|dr)?\s*\)?$",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-    private static readonly HashSet<string> SkipKeywords = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "date", "description", "narration", "particulars",
-        "amount", "debit", "credit", "balance", "closing",
-        "opening", "total", "sub-total", "subtotal",
-        "carried forward", "brought forward", "page", "statement"
+        ["Bill Payments"] = "Bills",
+        ["Fuel"] = "Fuel",
+        ["Food"] = "Food",
+        ["Groceries"] = "Groceries",
+        ["Shopping"] = "Shopping",
+        ["Money Transfer"] = "Transfer",
+        ["Money Received"] = "Income"
     };
 
     public PdfService(ILogger<PdfService> logger)
@@ -80,494 +53,336 @@ public class PdfService
 
     public Task<ParsedFileResult> ParseAsync(Stream fileStream, int userId)
     {
-        ParsedFileResult result = new ParsedFileResult();
+        var result = new ParsedFileResult();
 
-        if (fileStream == null || fileStream.Length == 0)
+        if (fileStream == null || !fileStream.CanRead)
         {
-            _logger.LogWarning("PDF upload for user {UserId}: empty stream.", userId);
+            _logger.LogWarning("PDF parse failed for user {UserId}: stream is null or unreadable.", userId);
             return Task.FromResult(result);
         }
 
-        PdfDocument? document = null;
+        if (fileStream.CanSeek)
+            fileStream.Position = 0;
 
         try
         {
-            document = PdfDocument.Open(fileStream);
+            using PdfDocument document = PdfDocument.Open(fileStream);
+
+            var lines = ExtractReadableLines(document);
+            _logger.LogInformation("PDF text extraction for user {UserId}: extracted {LineCount} lines from {PageCount} pages.",
+                userId, lines.Count, document.NumberOfPages);
+
+            if (lines.Count == 0)
+                return Task.FromResult(result);
+
+            int defaultYear = DetectStatementEndYear(lines) ?? DateTime.Now.Year;
+            var transactions = ParsePaytmLines(lines, userId, defaultYear);
+
+            result.TotalRowsFound = transactions.Count;
+            result.Transactions.AddRange(transactions);
+            result.SkippedRows = 0;
+
+            _logger.LogInformation("Paytm PDF parse complete for user {UserId}: Found={Found}, Parsed={Parsed}.",
+                userId, result.TotalRowsFound, result.Transactions.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "PDF upload for user {UserId}: cannot open PDF.", userId);
-            return Task.FromResult(result);
+            _logger.LogError(ex, "PDF parse failed for user {UserId}.", userId);
         }
-
-        using (document)
-        {
-            if (document.NumberOfPages == 0)
-            {
-                _logger.LogWarning("PDF upload for user {UserId}: document has no pages.", userId);
-                return Task.FromResult(result);
-            }
-
-            List<string> allLines = ExtractLinesFromDocument(document, userId);
-            List<string> transactionBlocks = MergeGooglePayTransactionLines(allLines);
-
-            foreach (string rawLine in transactionBlocks)
-            {
-                string line = rawLine.Trim();
-
-                if (string.IsNullOrWhiteSpace(line))
-                {
-                    continue;
-                }
-
-                if (IsHeaderOrFooterRow(line))
-                {
-                    continue;
-                }
-
-                result.TotalRowsFound++;
-
-                Transaction? transaction = TryParseLine(line, userId);
-
-                if (transaction != null)
-                {
-                    result.Transactions.Add(transaction);
-                }
-                else
-                {
-                    result.SkippedRows++;
-                    _logger.LogDebug("PDF user {UserId}: skipped row: {Line}", userId, line);
-                }
-            }
-        }
-
-        _logger.LogInformation(
-            "PDF parse complete for user {UserId}: {Total} rows found, {Valid} valid, {Skipped} skipped.",
-            userId,
-            result.TotalRowsFound,
-            result.Transactions.Count,
-            result.SkippedRows);
 
         return Task.FromResult(result);
     }
 
-    private List<string> ExtractLinesFromDocument(PdfDocument document, int userId)
+    // ---------------------------------------------------------------------------
+    // Text extraction
+    // ---------------------------------------------------------------------------
+
+    private static List<string> ExtractReadableLines(PdfDocument document)
     {
-        List<string> allLines = new List<string>();
+        var allLines = new List<string>();
 
-        for (int pageNum = 1; pageNum <= document.NumberOfPages; pageNum++)
+        foreach (Page page in document.GetPages())
         {
-            try
+            var wordLines = ExtractLinesFromWords(page);
+
+            if (wordLines.Count > 0)
             {
-                Page page = document.GetPage(pageNum);
-                IReadOnlyList<Word> words = page.GetWords().ToList();
-
-                if (words.Count == 0)
-                {
-                    continue;
-                }
-
-                IEnumerable<IGrouping<int, Word>> lineGroups = words
-                    .GroupBy(word => (int)Math.Round(word.BoundingBox.Top / 3.0) * 3)
-                    .OrderByDescending(group => group.Key);
-
-                foreach (IGrouping<int, Word> group in lineGroups)
-                {
-                    string line = string.Join(" ",
-                        group
-                            .OrderBy(word => word.BoundingBox.Left)
-                            .Select(word => word.Text));
-
-                    if (!string.IsNullOrWhiteSpace(line))
-                    {
-                        allLines.Add(line);
-                    }
-                }
+                allLines.AddRange(wordLines);
+                continue;
             }
-            catch (Exception ex)
+
+            if (!string.IsNullOrWhiteSpace(page.Text))
             {
-                _logger.LogWarning(ex, "PDF user {UserId}: failed to read page {Page}.", userId, pageNum);
+                allLines.AddRange(page.Text
+                    .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(CleanLine)
+                    .Where(l => !string.IsNullOrWhiteSpace(l)));
             }
         }
 
         return allLines;
     }
 
-    private static List<string> MergeGooglePayTransactionLines(List<string> lines)
+    private static List<string> ExtractLinesFromWords(Page page)
     {
-        List<string> mergedLines = new List<string>();
-        string currentBlock = string.Empty;
+        var words = page.GetWords().ToList();
+        var lines = new List<string>();
 
-        foreach (string rawLine in lines)
+        if (words.Count == 0)
+            return lines;
+
+        var grouped = words
+            .GroupBy(w => Math.Round(w.BoundingBox.Bottom / 3.0) * 3.0)
+            .OrderByDescending(g => g.Key);
+
+        foreach (var group in grouped)
         {
-            string line = rawLine.Trim();
+            string line = string.Join(" ", group
+                .OrderBy(w => w.BoundingBox.Left)
+                .Select(w => w.Text));
 
-            if (string.IsNullOrWhiteSpace(line))
-            {
+            line = CleanLine(line);
+
+            if (!string.IsNullOrWhiteSpace(line))
+                lines.Add(line);
+        }
+
+        return lines;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Transaction parsing
+    // ---------------------------------------------------------------------------
+
+    private static List<Transaction> ParsePaytmLines(List<string> lines, int userId, int defaultYear)
+    {
+        var transactions = new List<Transaction>();
+
+        for (int i = 0; i < lines.Count; i++)
+        {
+            string line = CleanLine(lines[i]);
+            Match dateMatch = PaytmDateLineRegex.Match(line);
+
+            if (!dateMatch.Success)
                 continue;
-            }
 
-            bool startsWithDate = LeadingDateTimeRegex.IsMatch(line);
+            int blockStart = i;
+            int blockEnd = FindNextPaytmTransactionStart(lines, i + 1);
+            if (blockEnd < 0)
+                blockEnd = lines.Count;
 
-            if (startsWithDate)
-            {
-                if (!string.IsNullOrWhiteSpace(currentBlock))
-                {
-                    mergedLines.Add(currentBlock.Trim());
-                }
+            var blockLines = lines
+                .Skip(blockStart)
+                .Take(blockEnd - blockStart)
+                .Select(CleanLine)
+                .ToList();
 
-                currentBlock = line;
-            }
-            else
-            {
-                if (!string.IsNullOrWhiteSpace(currentBlock))
-                {
-                    currentBlock = $"{currentBlock} {line}";
-                }
-                else
-                {
-                    mergedLines.Add(line);
-                }
-            }
+            Transaction? tx = TryParsePaytmBlock(blockLines, userId, defaultYear);
+
+            if (tx != null)
+                transactions.Add(tx);
+
+            i = blockEnd - 1;
         }
 
-        if (!string.IsNullOrWhiteSpace(currentBlock))
-        {
-            mergedLines.Add(currentBlock.Trim());
-        }
-
-        return mergedLines;
+        return transactions;
     }
 
-    private static bool IsHeaderOrFooterRow(string line)
+    /// <summary>
+    /// FIX 1 (previously): no longer requires a separate time-only line.
+    /// A line matching PaytmDateLineRegex is sufficient to start a new block.
+    /// </summary>
+    private static int FindNextPaytmTransactionStart(List<string> lines, int startIndex)
     {
-        string lower = line.ToLowerInvariant();
-
-        if (SkipKeywords.Any(keyword => lower.Contains(keyword)) &&
-            !LeadingDateTimeRegex.IsMatch(line))
+        for (int i = startIndex; i < lines.Count; i++)
         {
-            return true;
+            if (PaytmDateLineRegex.IsMatch(CleanLine(lines[i])))
+                return i;
         }
 
-        if (line.Replace(" ", "").Length < 5)
-        {
-            return true;
-        }
-
-        if (Regex.IsMatch(line.Trim(), @"^\d{1,3}$"))
-        {
-            return true;
-        }
-
-        return false;
+        return -1;
     }
 
-    private Transaction? TryParseLine(string line, int userId)
+    private static Transaction? TryParsePaytmBlock(List<string> blockLines, int userId, int defaultYear)
     {
-        if (TryExtractLeadingDateTime(line, out DateTime leadingDate, out string remainingText))
-        {
-            Transaction? parsed = TryBuildFromTextAfterDate(remainingText, leadingDate, userId);
+        if (blockLines.Count < 3)
+            return null;
 
-            if (parsed != null)
-            {
-                return parsed;
-            }
-        }
-
-        string[] tokens = Regex.Split(line, @"\s{2,}|\t")
-            .Select(token => token.Trim())
-            .Where(token => !string.IsNullOrWhiteSpace(token))
-            .ToArray();
-
-        if (tokens.Length < 2)
+        // FIX 2: Skip the statement summary header line.
+        // e.g. "29 Apr 46 Payments made 4 Payments received"
+        string fullBlock = CleanLine(string.Join(" ", blockLines));
+        if (fullBlock.Contains("Payments made", StringComparison.OrdinalIgnoreCase) ||
+            fullBlock.Contains("Payments received", StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
 
-        if (TryParseDate(tokens[0], out DateTime date))
-        {
-            return TryBuildFromDateFirst(tokens, date, userId);
-        }
-
-        if (tokens.Length >= 3 && TryParseDate($"{tokens[0]} {tokens[1]}", out date))
-        {
-            string[] shifted = new[] { $"{tokens[0]} {tokens[1]}" }
-                .Concat(tokens.Skip(2))
-                .ToArray();
-
-            return TryBuildFromDateFirst(shifted, date, userId);
-        }
-
-        string[] singleSplit = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-        if (singleSplit.Length >= 3 && TryParseDate(singleSplit[0], out date))
-        {
-            return TryBuildFromLooseLine(singleSplit, date, userId);
-        }
-
-        return null;
-    }
-
-    private Transaction? TryBuildFromTextAfterDate(string textAfterDate, DateTime date, int userId)
-    {
-        if (string.IsNullOrWhiteSpace(textAfterDate))
-        {
+        // Parse date from first line
+        Match dateMatch = PaytmDateLineRegex.Match(blockLines[0]);
+        if (!dateMatch.Success)
             return null;
-        }
 
-        string[] looseTokens = textAfterDate.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        int day = int.Parse(dateMatch.Groups["day"].Value, CultureInfo.InvariantCulture);
+        string monthText = dateMatch.Groups["month"].Value;
+        int month = DateTime.ParseExact(monthText, "MMM", CultureInfo.InvariantCulture).Month;
 
-        if (looseTokens.Length < 2)
-        {
+        if (!TryGetYearForPaytmDate(day, month, defaultYear, out int year))
             return null;
+
+        var date = new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Utc);
+
+        // FIX 3: Detect credit/debit from the +/- sign in the amount.
+        // Use only the first 8 lines of the block to avoid picking up amounts
+        // from adjacent transaction blocks that leaked through.
+        string localBlock = CleanLine(string.Join(" ", blockLines.Take(8)));
+        var allSignedMatches = PaytmAmountRegex.Matches(localBlock).Cast<Match>().ToList();
+        Match? amountMatch = allSignedMatches.LastOrDefault();
+        bool isCredit = false;
+
+        if (amountMatch != null && amountMatch.Success)
+        {
+            isCredit = amountMatch.Groups["sign"].Value == "+";
+        }
+        else
+        {
+            // Fallback: unsigned amount pattern, scoped to local block only
+            amountMatch = AnyAmountRegex.Matches(localBlock).Cast<Match>().LastOrDefault();
+            if (amountMatch == null || !amountMatch.Success)
+                return null;
         }
 
-        List<(string Token, int Index)> amountCandidates = looseTokens
-            .Select((token, index) => (Token: token.Trim(), Index: index))
-            .Where(item => AmountRegex.IsMatch(item.Token.Replace(" ", "")))
-            .ToList();
-
-        for (int i = 0; i < looseTokens.Length - 1; i++)
-        {
-            string combined = $"{looseTokens[i]}{looseTokens[i + 1]}";
-
-            if (AmountRegex.IsMatch(combined.Replace(" ", "")))
-            {
-                amountCandidates.Add((combined, i));
-            }
-        }
-
-        if (amountCandidates.Count == 0)
-        {
+        string rawAmount = amountMatch.Groups["amount"].Value.Replace(",", "");
+        if (!decimal.TryParse(rawAmount, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal amount))
             return null;
-        }
 
-        (string Token, int Index) amountCandidate = amountCandidates
-            .OrderByDescending(candidate => candidate.Index)
-            .First();
-
-        if (!TryParseAmount(amountCandidate.Token, out decimal amount))
-        {
-            return null;
-        }
-
-        if (amount == 0m)
-        {
-            return null;
-        }
-
-        string description = string.Join(" ", looseTokens.Take(amountCandidate.Index)).Trim();
+        string category = ExtractPaytmCategory(fullBlock);
+        string description = ExtractPaytmDescription(blockLines);
 
         if (string.IsNullOrWhiteSpace(description))
-        {
             return null;
-        }
+
+        // Override category for received money if the tag didn't already map it
+        if (isCredit && string.Equals(category, "Uncategorized", StringComparison.OrdinalIgnoreCase))
+            category = "Income";
 
         return new Transaction
         {
-            Date = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc),
+            Date = date,
             Description = description,
             Amount = Math.Abs(amount),
-            Category = "Uncategorized",
-            UserId = userId
-        };
-    }
-
-    private Transaction? TryBuildFromDateFirst(string[] tokens, DateTime date, int userId)
-    {
-        if (tokens.Length < 2)
-        {
-            return null;
-        }
-
-        int amountIndex = -1;
-
-        for (int i = tokens.Length - 1; i >= 1; i--)
-        {
-            if (AmountRegex.IsMatch(tokens[i].Replace(" ", "")))
-            {
-                amountIndex = i;
-                break;
-            }
-        }
-
-        if (amountIndex < 0)
-        {
-            return null;
-        }
-
-        if (!TryParseAmount(tokens[amountIndex], out decimal amount))
-        {
-            return null;
-        }
-
-        if (amount == 0m)
-        {
-            return null;
-        }
-
-        string description = string.Join(" ", tokens.Skip(1).Take(amountIndex - 1)).Trim();
-
-        if (string.IsNullOrWhiteSpace(description))
-        {
-            return null;
-        }
-
-        string category = amountIndex + 1 < tokens.Length
-            ? tokens[amountIndex + 1].Trim()
-            : "Uncategorized";
-
-        if (string.IsNullOrWhiteSpace(category) || AmountRegex.IsMatch(category.Replace(" ", "")))
-        {
-            category = "Uncategorized";
-        }
-
-        return new Transaction
-        {
-            Date = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc),
-            Description = description,
-            Amount = Math.Abs(amount),
+            IsCredit = isCredit,
             Category = category,
             UserId = userId
         };
     }
 
-    private Transaction? TryBuildFromLooseLine(string[] tokens, DateTime date, int userId)
+    /// <summary>
+    /// FIX 1 (part 2): description extraction now starts at index 1, not 2,
+    /// because the date+time are on the SAME line (blockLines[0]), so
+    /// blockLines[1] is the first real description line.
+    /// FIX 4: also stops on bank-name lines ("City Union Bank", "Indian Bank")
+    /// that leak in from the account column.
+    /// </summary>
+    private static string ExtractPaytmDescription(List<string> blockLines)
     {
-        List<(string Token, int Index)> amountCandidates = tokens
-            .Skip(1)
-            .Select((token, index) => (Token: token, Index: index + 1))
-            .Where(item => AmountRegex.IsMatch(item.Token.Replace(" ", "")))
-            .ToList();
+        var descriptionLines = new List<string>();
 
-        if (amountCandidates.Count == 0)
+        for (int i = 1; i < blockLines.Count; i++)
         {
-            return null;
+            string line = CleanLine(blockLines[i]);
+
+            // Skip standalone time lines e.g. "10:05 AM" that appear on their own row
+            if (TimeLineRegex.IsMatch(line)) continue;
+
+            if (line.StartsWith("UPI ID", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("UPI Ref No", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("Order ID", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("Tag:", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("#") ||
+                line.StartsWith("Note:", StringComparison.OrdinalIgnoreCase) ||
+                PaytmAmountRegex.IsMatch(line) ||
+                line.Contains("Bank -", StringComparison.OrdinalIgnoreCase) ||
+                BankLineRegex.IsMatch(line))
+            {
+                break;
+            }
+
+            descriptionLines.Add(line);
         }
 
-        (string token, int index) = amountCandidates.Last();
+        string description = CleanLine(string.Join(" ", descriptionLines));
 
-        if (!TryParseAmount(token, out decimal amount))
-        {
-            return null;
-        }
+        // Strip trailing "Tag: / City Union / Indian Bank / HH:MM AM/PM" artifacts
+        // that sometimes bleed in from the account column on the same line
+        description = Regex.Replace(description,
+            @"\s+(Tag:|City Union|Indian Bank|\d{1,2}:\d{2}\s*(AM|PM)).*$",
+            "", RegexOptions.IgnoreCase).Trim();
 
-        if (amount == 0m)
-        {
-            return null;
-        }
-
-        string description = string.Join(" ", tokens.Skip(1).Take(index - 1)).Trim();
-
-        if (string.IsNullOrWhiteSpace(description))
-        {
-            return null;
-        }
-
-        return new Transaction
-        {
-            Date = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc),
-            Description = description,
-            Amount = Math.Abs(amount),
-            Category = "Uncategorized",
-            UserId = userId
-        };
+        return string.IsNullOrWhiteSpace(description)
+            ? "Paytm Transaction"
+            : description;
     }
 
-    private static bool TryExtractLeadingDateTime(string line, out DateTime date, out string remainingText)
+    private static string ExtractPaytmCategory(string fullBlock)
     {
-        date = default;
-        remainingText = string.Empty;
+        Match tagMatch = Regex.Match(fullBlock, @"#\s*(?<tag>[A-Za-z ]+)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-        Match match = LeadingDateTimeRegex.Match(line);
+        if (!tagMatch.Success)
+            return "Uncategorized";
+
+        string rawTag = CleanLine(tagMatch.Groups["tag"].Value);
+        rawTag = Regex.Replace(rawTag,
+            @"\b(City|Union|Indian|Bank|Rs|UPI|Ref|No|Order|ID)\b.*$",
+            "", RegexOptions.IgnoreCase).Trim();
+
+        return CategoryAliases.TryGetValue(rawTag, out string? mapped)
+            ? mapped
+            : rawTag;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------------
+
+    private static int? DetectStatementEndYear(List<string> lines)
+    {
+        string allText = string.Join(" ", lines);
+        Match match = PaytmStatementRangeRegex.Match(allText);
 
         if (!match.Success)
         {
-            return false;
+            Match anyYear = Regex.Match(allText, @"\b20\d{2}\b");
+            return anyYear.Success
+                ? int.Parse(anyYear.Value, CultureInfo.InvariantCulture)
+                : null;
         }
 
-        string rawDate = match.Groups["date"].Value.Trim().TrimEnd(',');
-
-        if (!TryParseDate(rawDate, out date))
-        {
-            return false;
-        }
-
-        remainingText = line[match.Length..].Trim(' ', '-', '|', ':', '\t');
-
-        return true;
+        string rawYear = match.Groups["toYear"].Value;
+        int year = int.Parse(rawYear, CultureInfo.InvariantCulture);
+        return year < 100 ? 2000 + year : year;
     }
 
-    private static bool TryParseDate(string raw, out DateTime date)
+    private static bool TryGetYearForPaytmDate(int day, int month, int defaultYear, out int year)
     {
-        date = default;
-
-        if (string.IsNullOrWhiteSpace(raw))
+        year = defaultYear;
+        try
+        {
+            _ = new DateTime(year, month, day);
+            return true;
+        }
+        catch
         {
             return false;
         }
-
-        raw = Regex.Replace(raw.Trim(), @"\s+", " ").TrimEnd(',');
-
-        return DateTime.TryParseExact(
-                   raw,
-                   DateFormats,
-                   CultureInfo.InvariantCulture,
-                   DateTimeStyles.AllowWhiteSpaces,
-                   out date)
-               || DateTime.TryParse(
-                   raw,
-                   CultureInfo.InvariantCulture,
-                   DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeLocal,
-                   out date);
     }
 
-    private static bool TryParseAmount(string raw, out decimal amount)
+    private static string CleanLine(string value)
     {
-        amount = 0m;
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
 
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return false;
-        }
-
-        raw = raw.Trim();
-
-        bool isNegative = raw.StartsWith('(')
-                          || raw.StartsWith('-')
-                          || raw.EndsWith("dr", StringComparison.OrdinalIgnoreCase);
-
-        string cleaned = raw
-            .Replace("₹", "", StringComparison.OrdinalIgnoreCase)
-            .Replace("INR", "", StringComparison.OrdinalIgnoreCase)
-            .Replace("Rs.", "", StringComparison.OrdinalIgnoreCase)
-            .Replace("Rs", "", StringComparison.OrdinalIgnoreCase)
-            .Replace("CR", "", StringComparison.OrdinalIgnoreCase)
-            .Replace("DR", "", StringComparison.OrdinalIgnoreCase)
-            .Trim('(', ')', '-', '+', ' ');
-
-        int lastComma = cleaned.LastIndexOf(',');
-        int lastDot = cleaned.LastIndexOf('.');
-
-        if (lastComma > lastDot)
-        {
-            cleaned = cleaned.Replace(".", "").Replace(",", ".");
-        }
-        else
-        {
-            cleaned = cleaned.Replace(",", "");
-        }
-
-        if (!decimal.TryParse(cleaned, NumberStyles.Any, CultureInfo.InvariantCulture, out amount))
-        {
-            return false;
-        }
-
-        if (isNegative)
-        {
-            amount = -amount;
-        }
-
-        return true;
+        value = value.Replace("#️", "#").Replace("₹", "Rs.");
+        return UpsertSpacesRegex.Replace(value, " ").Trim();
     }
 }
