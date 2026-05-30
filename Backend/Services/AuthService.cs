@@ -122,23 +122,27 @@ public class AuthService : IAuthService
 
         string normalizedEmail = NormalizeEmail(payload.Email);
         User? user = await _userRepository.GetByProviderAsync(GoogleProvider, payload.Subject)
-                     ?? await _userRepository.GetByEmailAsync(normalizedEmail);
+             ?? await _userRepository.GetByEmailAsync(normalizedEmail);
 
-        if (user is null)
-        {
-            user = await _userRepository.CreateAsync(new User
-            {
-                Email = normalizedEmail,
-                PasswordHash = string.Empty,
-                IsEmailVerified = true,
-                CreatedAtUtc = DateTime.UtcNow
-            });
-        }
-        else if (!user.IsEmailVerified)
-        {
-            user.IsEmailVerified = true;
-            await _userRepository.UpdateAsync(user);
-        }
+if (user is null)
+{
+    user = await _userRepository.CreateAsync(new User
+    {
+        Email = normalizedEmail,
+        PasswordHash = string.Empty,
+        IsEmailVerified = true,
+        IsMobileVerified = false,
+        CreatedAtUtc = DateTime.UtcNow,
+        LastLoginAtUtc = DateTime.UtcNow
+    });
+}
+else
+{
+    user.IsEmailVerified = true;
+    user.LastLoginAtUtc = DateTime.UtcNow;
+
+    await _userRepository.UpdateAsync(user);
+}
 
         User? alreadyLinkedUser = await _userRepository.GetByProviderAsync(GoogleProvider, payload.Subject);
         if (alreadyLinkedUser is null)
