@@ -45,14 +45,16 @@ public class DashboardController : ControllerBase
         SpendingSummaryDto summary = await _transactionService.GetSummaryAsync(userId);
 
         var dto = new DashboardSummaryDto
-        {
-            TotalSpent              = summary.TotalSpent,
-            TotalTransactions       = summary.TotalTransactions,
-            AverageMonthlySpend     = summary.AverageMonthlySpend,
-            HighestSpendingCategory = summary.HighestSpendingCategory,
-            CategoryBreakdown       = summary.CategoryBreakdown,
-            MonthlyBreakdown        = summary.MonthlyBreakdown
-        };
+{
+    TotalSpent              = summary.TotalSpent,
+    TotalReceived           = summary.TotalReceived,
+    TotalTransactionVolume  = summary.TotalTransactionVolume,
+    TotalTransactions       = summary.TotalTransactions,
+    AverageMonthlySpend     = summary.AverageMonthlySpend,
+    HighestSpendingCategory = summary.HighestSpendingCategory,
+    CategoryBreakdown       = summary.CategoryBreakdown,
+    MonthlyBreakdown        = summary.MonthlyBreakdown
+};
         return Ok(dto);
     }
 

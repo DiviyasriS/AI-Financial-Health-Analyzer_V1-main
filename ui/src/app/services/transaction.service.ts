@@ -31,6 +31,8 @@ export interface MonthlySummary {
 
 export interface SpendingSummary {
   totalSpent: number;
+  totalReceived: number;
+  totalTransactionVolume: number;
   totalTransactions: number;
   averageTransactionAmount: number;
   averageMonthlySpend: number;

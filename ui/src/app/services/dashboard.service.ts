@@ -6,6 +6,8 @@ import { CategorySummary, MonthlySummary } from './transaction.service';
 
 export interface DashboardSummary {
   totalSpent: number;
+  totalReceived: number;
+  totalTransactionVolume: number;
   totalTransactions: number;
   averageMonthlySpend: number;
   highestSpendingCategory: string;
@@ -61,13 +63,15 @@ export class DashboardService {
   }
 
   toCategorySlices(summary: DashboardSummary): ChartSlice[] {
-  return summary.categoryBreakdown.map((item: CategorySummary): ChartSlice => {
-    return {
-      label: item.category,
-      value: item.total,
-      percentage: item.percentageOfTotal
-    };
-  });
+  return summary.categoryBreakdown
+    .filter(item => item.category.toLowerCase() !== 'transfer')
+    .map((item: CategorySummary): ChartSlice => {
+      return {
+        label: item.category,
+        value: item.total,
+        percentage: item.percentageOfTotal
+      };
+    });
 }
 
 toMonthlyBars(summary: DashboardSummary): MonthlyBar[] {

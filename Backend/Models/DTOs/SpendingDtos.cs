@@ -4,6 +4,11 @@ public class SpendingSummaryDto
 {
     // ── Totals ────────────────────────────────────────────────────────────────
     public decimal TotalSpent { get; set; }
+
+    public decimal TotalReceived { get; set; }
+    public decimal TotalTransactionVolume { get; set; }
+
+
     public int TotalTransactions { get; set; }
     public decimal AverageTransactionAmount { get; set; }
 
@@ -17,6 +22,8 @@ public class SpendingSummaryDto
     // ── Breakdowns ────────────────────────────────────────────────────────────
     public List<CategorySummaryDto> CategoryBreakdown { get; set; } = new();
     public List<MonthlySummaryDto> MonthlyBreakdown { get; set; } = new();
+
+    
 }
 
 public class CategorySummaryDto

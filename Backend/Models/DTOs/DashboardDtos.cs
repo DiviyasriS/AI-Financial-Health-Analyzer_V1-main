@@ -3,9 +3,13 @@
 public class DashboardSummaryDto
 {
     public decimal TotalSpent { get; set; }
+    public decimal TotalReceived { get; set; }
+    public decimal TotalTransactionVolume { get; set; }
+
     public int TotalTransactions { get; set; }
     public decimal AverageMonthlySpend { get; set; }
     public string HighestSpendingCategory { get; set; } = string.Empty;
+
     public List<CategorySummaryDto> CategoryBreakdown { get; set; } = new();
     public List<MonthlySummaryDto> MonthlyBreakdown { get; set; } = new();
 }

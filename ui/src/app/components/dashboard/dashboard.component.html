@@ -64,6 +64,22 @@
       </div>
     </div>
 
+<div class="kpi-card">
+  <span class="kpi-icon">📥</span>
+  <div class="kpi-body">
+    <span class="kpi-label">Total Received</span>
+    <span class="kpi-value">{{ formatCurrency(summary!.totalReceived) }}</span>
+  </div>
+</div>
+
+<div class="kpi-card">
+  <span class="kpi-icon">🔄</span>
+  <div class="kpi-body">
+    <span class="kpi-label">Transaction Volume</span>
+    <span class="kpi-value">{{ formatCurrency(summary!.totalTransactionVolume) }}</span>
+  </div>
+</div>
+
     <div class="kpi-card">
       <span class="kpi-icon">📋</span>
       <div class="kpi-body">
@@ -88,6 +104,8 @@
       </div>
     </div>
   </section>
+
+  
 
   <!-- ── Row 1 : Category Doughnut + Risk Gauge ─────────────────────── -->
   <div class="db-row db-row-2">
@@ -164,15 +182,25 @@
       </div>
     </div>
 
-    <div class="db-card">
-      <h2 class="db-card-title">
-        <span class="db-card-icon">📈</span>
-        Spending Trend
-      </h2>
-      <div class="chart-wrap chart-wrap--lg">
-        <canvas #trendChart></canvas>
-      </div>
-    </div>
+    <div class="db-card" *ngIf="showTrendChart">
+  <h2 class="db-card-title">
+    <span class="db-card-icon">📈</span>
+    Spending Trend
+  </h2>
+  <div class="chart-wrap chart-wrap--lg">
+    <canvas #trendChart></canvas>
+  </div>
+</div>
+
+<div class="db-card trend-empty" *ngIf="!showTrendChart">
+  <h2 class="db-card-title">
+    <span class="db-card-icon">📈</span>
+    Spending Trend
+  </h2>
+  <p class="muted">
+    Trend analysis will appear after at least 2 months of transactions.
+  </p>
+</div>
 
   </div>
 
@@ -219,7 +247,7 @@
           <tr>
             <th>Month</th>
             <th class="num">Total Spent</th>
-            <th class="num">Transactions</th>
+            <th class="num">Expense Transactions</th>
             <th class="num">vs Prev Month</th>
             <th class="num">% Change</th>
           </tr>

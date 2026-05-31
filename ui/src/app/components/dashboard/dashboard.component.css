@@ -308,3 +308,26 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.trend-empty {
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.trend-empty .muted {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.kpi-value {
+  font-size: 19px;
+  word-break: break-word;
+}
+
+@media (min-width: 1000px) {
+  .kpi-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

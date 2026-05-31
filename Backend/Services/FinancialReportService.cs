@@ -64,6 +64,7 @@ public class FinancialReportService : IReportService
             if (insights.Count == 0 && transactions.Count > 0)
             {
                 UserRiskFeatures features = FinancialFeatureExtractor.Extract(transactions);
+
                 insights = await _insightsService.GenerateAndSaveAsync(
                     userId,
                     features,
@@ -72,7 +73,8 @@ public class FinancialReportService : IReportService
             }
 
             List<Transaction> topTransactions = transactions
-                .OrderByDescending(t => t.Amount)
+                .Where(t => !t.IsCredit)
+                .OrderByDescending(t => Math.Abs(t.Amount))
                 .Take(10)
                 .ToList();
 
@@ -118,6 +120,7 @@ public class FinancialReportService : IReportService
                     col.Spacing(14);
 
                     col.Item().Element(SectionTitle).Text("Summary").Bold();
+
                     col.Item().Table(table =>
                     {
                         table.ColumnsDefinition(columns =>
@@ -127,29 +130,39 @@ public class FinancialReportService : IReportService
                         });
 
                         AddKeyValue(table, "Total Spent", FormatCurrency(summary.TotalSpent));
+                        AddKeyValue(table, "Total Received", FormatCurrency(summary.TotalReceived));
+                        AddKeyValue(table, "Total Transaction Volume", FormatCurrency(summary.TotalTransactionVolume));
                         AddKeyValue(table, "Total Transactions", summary.TotalTransactions.ToString());
-                        AddKeyValue(table, "Average Transaction", FormatCurrency(summary.AverageTransactionAmount));
+                        AddKeyValue(table, "Average Expense Transaction", FormatCurrency(summary.AverageTransactionAmount));
                         AddKeyValue(table, "Average Monthly Spend", FormatCurrency(summary.AverageMonthlySpend));
                         AddKeyValue(table, "Highest Spending Category", summary.HighestSpendingCategory);
                     });
 
                     col.Item().Element(SectionTitle).Text("Risk Score").Bold();
+
                     col.Item().Text(risk is null
                         ? "Risk Score: Not available"
                         : $"Risk Level: {risk.RiskLevel} | Risk Score: {(risk.RiskScore * 100):0}% | Predicted At: {risk.PredictedAt:dd MMM yyyy}");
 
                     col.Item().Element(SectionTitle).Text("Category Breakdown").Bold();
+
                     col.Item().Table(table =>
                     {
                         table.ColumnsDefinition(columns =>
                         {
+                            columns.RelativeColumn(4);
                             columns.RelativeColumn(2);
-                            columns.RelativeColumn();
-                            columns.RelativeColumn();
-                            columns.RelativeColumn();
+                            columns.RelativeColumn(2);
+                            columns.RelativeColumn(2);
                         });
 
-                        AddHeader(table, "Category", "Total", "Count", "% of Total");
+                        AddHeader(
+                            table,
+                            "Category",
+                            "Total Spent",
+                            "Transactions",
+                            "Percentage"
+                        );
 
                         foreach (CategorySummaryDto item in summary.CategoryBreakdown)
                         {
@@ -161,16 +174,22 @@ public class FinancialReportService : IReportService
                     });
 
                     col.Item().Element(SectionTitle).Text("Monthly Breakdown").Bold();
+
                     col.Item().Table(table =>
                     {
                         table.ColumnsDefinition(columns =>
                         {
+                            columns.RelativeColumn(3);
                             columns.RelativeColumn(2);
-                            columns.RelativeColumn();
-                            columns.RelativeColumn();
+                            columns.RelativeColumn(2);
                         });
 
-                        AddHeader(table, "Month", "Total", "Transactions");
+                        AddHeader(
+                            table,
+                            "Month",
+                            "Total Spent",
+                            "Transactions"
+                        );
 
                         foreach (MonthlySummaryDto item in summary.MonthlyBreakdown)
                         {
@@ -195,6 +214,7 @@ public class FinancialReportService : IReportService
                     }
 
                     col.Item().Element(SectionTitle).Text("Top Transactions").Bold();
+
                     col.Item().Table(table =>
                     {
                         table.ColumnsDefinition(columns =>
@@ -212,7 +232,7 @@ public class FinancialReportService : IReportService
                             table.Cell().Element(Cell).Text(tx.Date.ToString("dd MMM yyyy"));
                             table.Cell().Element(Cell).Text(tx.Description);
                             table.Cell().Element(Cell).Text(tx.Category);
-                            table.Cell().Element(Cell).Text(FormatCurrency(tx.Amount));
+                            table.Cell().Element(Cell).Text(FormatCurrency(Math.Abs(tx.Amount)));
                         }
                     });
                 });
@@ -270,6 +290,6 @@ public class FinancialReportService : IReportService
 
     private static string FormatCurrency(decimal value)
     {
-        return $"₹{value:N2}";
+        return $"₹{Math.Abs(value):N2}";
     }
 }

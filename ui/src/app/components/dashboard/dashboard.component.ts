@@ -165,34 +165,42 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private renderTrendLine(): void {
-    if (!this.trendRef || !this.monthlyBars.length) return;
+  if (!this.trendRef || this.monthlyBars.length < 2) return;
 
-    this.chartTrend = this.chartService.createLine(
-      this.trendRef.nativeElement,
-      {
-        labels: this.monthlyBars.map(b => b.label),
-        values: this.monthlyBars.map(b => b.total),
-      },
-      this.chartTrend,
-    );
-  }
+  this.chartTrend = this.chartService.createLine(
+    this.trendRef.nativeElement,
+    {
+      labels: this.monthlyBars.map(b => b.label),
+      values: this.monthlyBars.map(b => b.total),
+    },
+    this.chartTrend,
+  );
+}
 
-  private renderTopCategoriesBar(): void {
-    if (!this.topCatRef || !this.summary?.categoryBreakdown.length) return;
+private renderTopCategoriesBar(): void {
+  if (!this.topCatRef || !this.summary?.categoryBreakdown.length) return;
 
-    const top5 = [...this.summary.categoryBreakdown]
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
+  const top5 = [...this.summary.categoryBreakdown]
+    .filter(c => c.category.toLowerCase() !== 'transfer')
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
 
-    this.chartTopCat = this.chartService.createHorizontalBar(
-      this.topCatRef.nativeElement,
-      {
-        labels: top5.map(c => c.category),
-        values: top5.map(c => c.total),
-      },
-      this.chartTopCat,
-    );
-  }
+  this.chartTopCat = this.chartService.createHorizontalBar(
+    this.topCatRef.nativeElement,
+    {
+      labels: top5.map(c => c.category),
+      values: top5.map(c => c.total),
+    },
+    this.chartTopCat,
+  );
+}
+
+formatCurrency(value: number): string {
+  return `₹${value.toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`;
+}
 
   private renderRiskGauge(): void {
     if (!this.riskGaugeRef || !this.risk) return;
@@ -241,9 +249,6 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.chartService.riskColour(this.risk?.riskLevel ?? '');
   }
 
-  formatCurrency(value: number): string {
-    return `₹${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
-  }
 
   formatChange(value: number | null): string {
     if (value === null) return '—';
@@ -270,6 +275,9 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     return map[type] ?? 'ℹ️';
   }
 
+  get showTrendChart(): boolean {
+  return this.monthlyBars.length >= 2;
+}
 
   
   downloadReport(): void {

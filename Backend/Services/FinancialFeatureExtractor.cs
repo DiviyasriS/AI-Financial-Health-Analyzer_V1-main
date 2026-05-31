@@ -45,6 +45,14 @@ public static class FinancialFeatureExtractor
         {
             return new UserRiskFeatures();
         }
+        transactions = transactions
+    .Where(IsSpendingAnalyticsTransaction)
+    .ToList();
+
+if (transactions.Count == 0)
+{
+    return new UserRiskFeatures();
+}
 
         // ── Monthly aggregation ──────────────────────────────────────────────
         Dictionary<(int Year, int Month), List<Transaction>> byMonth =
@@ -217,4 +225,23 @@ public static class FinancialFeatureExtractor
             ? (float)(slope / avgY)
             : 0f;
     }
+
+    private static bool IsSpendingAnalyticsTransaction(Transaction transaction)
+{
+    if (transaction.IsCredit)
+        return false;
+
+    string category = transaction.Category?.Trim().ToLowerInvariant() ?? "";
+    string description = transaction.Description?.Trim().ToLowerInvariant() ?? "";
+
+    if (category.Contains("transfer"))
+        return false;
+
+    if (description.Contains("money sent") ||
+        description.Contains("self transfer") ||
+        description.Contains("transfer"))
+        return false;
+
+    return true;
+}
 }
