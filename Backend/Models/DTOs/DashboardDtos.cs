@@ -19,11 +19,19 @@ public class DashboardSummaryDto
 public class RiskDto
 {
     public string RiskLevel { get; set; } = string.Empty;
+
+    // Financial risk severity from 0.0 to 1.0.
+    // This is NOT ML confidence.
     public float RiskScore { get; set; }
+
     public DateTime PredictedAt { get; set; }
 
     // Friendly description for the UI
     public string Description { get; set; } = string.Empty;
+
+    // Explainability fields for mentor/demo-ready output
+    public List<string> RiskFactors { get; set; } = new();
+    public List<string> PositiveSignals { get; set; } = new();
 }
 
 public class InsightDto

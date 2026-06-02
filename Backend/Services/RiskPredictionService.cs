@@ -56,60 +56,63 @@ public class RiskPredictionService
     }
 
     /// <summary>
-    /// Produces a risk prediction from a pre-computed feature vector.
+    /// Produces an explainable financial risk prediction from a pre-computed feature vector.
+    ///
+    /// Domain rule:
+    /// - RiskLevel may use the trained model when available.
+    /// - RiskScore is always the transparent financial risk-severity scorecard result.
+    ///   It is not the ML confidence probability.
     /// </summary>
     /// <param name="features">Features extracted by <see cref="FinancialFeatureExtractor"/>.</param>
-    /// <returns>Risk level string ("Low" | "Medium" | "High") and a 0-1 confidence score.</returns>
+    /// <returns>Risk level string ("Low" | "Medium" | "High" | "Unknown") and a 0-1 severity score.</returns>
     public (string RiskLevel, float RiskScore) Predict(UserRiskFeatures features)
     {
-        if (!_isModelLoaded || _predictionPool == null)
+        RiskAssessmentResult assessment = RiskLabelGenerator.GenerateAssessment(features);
+
+        if (assessment.RiskLevel == "Unknown")
+        {
+            return (assessment.RiskLevel, 0f);
+        }
+
+        string finalRiskLevel = assessment.RiskLevel;
+
+        if (_isModelLoaded && _predictionPool != null)
+        {
+            RiskInput input = BuildInput(features);
+            PredictionEngine<RiskInput, RiskOutput> engine = _predictionPool.Get();
+
+            try
+            {
+                RiskOutput result = engine.Predict(input);
+                string mlRiskLevel = ToRiskLevel(result.PredictedLabel);
+
+                // Guardrail: never allow the model to jump more than one level away
+                // from the explainable scorecard. This keeps the result trustworthy
+                // while still allowing ML to refine borderline cases.
+                finalRiskLevel = ReconcileRiskLevels(assessment.RiskLevel, mlRiskLevel);
+
+                _logger.LogInformation(
+                    "Risk prediction: FinalLevel={FinalLevel}, ScorecardLevel={ScorecardLevel}, MlLevel={MlLevel}, RiskSeverity={RiskSeverity:P1}, RawMlScores=[{Scores}]",
+                    finalRiskLevel,
+                    assessment.RiskLevel,
+                    mlRiskLevel,
+                    assessment.RiskScorePercent / 100f,
+                    result.Score.Length > 0
+                        ? string.Join(", ", result.Score.Select(s => s.ToString("F3")))
+                        : "none");
+            }
+            finally
+            {
+                _predictionPool.Return(engine);
+            }
+        }
+        else
         {
             _logger.LogWarning(
-                "RiskPredictionService: model not loaded, returning rule-based fallback.");
-            return RuleBasedFallback(features);
+                "RiskPredictionService: model not loaded; using explainable rule-based risk assessment.");
         }
 
-        RiskInput input = BuildInput(features);
-        PredictionEngine<RiskInput, RiskOutput> engine = _predictionPool.Get();
-
-        try
-        {
-            RiskOutput result = engine.Predict(input);
-
-            string riskLevel = result.PredictedLabel switch
-            {
-                var l when Math.Abs(l - LabelLow)    < 0.01f => "Low",
-                var l when Math.Abs(l - LabelMedium) < 0.01f => "Medium",
-                var l when Math.Abs(l - LabelHigh)   < 0.01f => "High",
-                _                                             => "Low"
-            };
-
-            // Score = confidence for the predicted class
-            float riskScore = riskLevel switch
-            {
-                "Low"    => result.Score.Length > 0 ? result.Score[0] : 0.2f,
-                "Medium" => result.Score.Length > 1 ? result.Score[1] : 0.5f,
-                "High"   => result.Score.Length > 2 ? result.Score[2] : 0.9f,
-                _        => 0.5f
-            };
-
-            riskScore = Math.Clamp(riskScore, 0f, 1f);
-
-            _logger.LogInformation(
-                "Risk prediction: Level={Level}, Score={Score:P1}, " +
-                "RawScores=[{Scores}], MonthlyAvg={MonthlyAvg:F0}",
-                riskLevel, riskScore,
-                result.Score.Length > 0
-                    ? string.Join(", ", result.Score.Select(s => s.ToString("F3")))
-                    : "none",
-                features.MonthlyAvgSpend);
-
-            return (riskLevel, riskScore);
-        }
-        finally
-        {
-            _predictionPool.Return(engine);
-        }
+        return (finalRiskLevel, Math.Clamp(assessment.RiskScorePercent / 100f, 0f, 1f));
     }
 
     public bool IsModelLoaded => _isModelLoaded;
@@ -142,6 +145,36 @@ public class RiskPredictionService
 
         return _poolProvider.Create(policy);
     }
+
+    private static string ToRiskLevel(float predictedLabel) => predictedLabel switch
+    {
+        var l when Math.Abs(l - LabelLow) < 0.01f => "Low",
+        var l when Math.Abs(l - LabelMedium) < 0.01f => "Medium",
+        var l when Math.Abs(l - LabelHigh) < 0.01f => "High",
+        _ => "Low"
+    };
+
+    private static string ReconcileRiskLevels(string scorecardLevel, string mlLevel)
+    {
+        int scorecardRank = RiskRank(scorecardLevel);
+        int mlRank = RiskRank(mlLevel);
+
+        if (scorecardRank == 0 || mlRank == 0)
+            return scorecardLevel;
+
+        if (Math.Abs(scorecardRank - mlRank) <= 1)
+            return mlLevel;
+
+        return scorecardLevel;
+    }
+
+    private static int RiskRank(string level) => level switch
+    {
+        "Low" => 1,
+        "Medium" => 2,
+        "High" => 3,
+        _ => 0
+    };
 
     /// <summary>
     /// Rule-based fallback used when the ML model is not yet available.
