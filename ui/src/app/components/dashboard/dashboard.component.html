@@ -1,286 +1,424 @@
-<div *ngIf="loading" class="db-loading">
-  <div class="db-spinner"></div>
-  <p>Crunching your numbers…</p>
+<!-- ══════════════════════════════════════════════════════════
+     LOADING STATE
+══════════════════════════════════════════════════════════ -->
+<div *ngIf="loading" class="state-screen">
+  <div class="loader-ring">
+    <svg viewBox="0 0 56 56" fill="none">
+      <circle cx="28" cy="28" r="23" stroke="var(--border-subtle)" stroke-width="3"/>
+      <circle cx="28" cy="28" r="23" stroke="var(--gold)" stroke-width="3"
+        stroke-dasharray="144" stroke-dashoffset="108" stroke-linecap="round"
+        class="spin-arc"/>
+    </svg>
+  </div>
+  <p class="state-label">Analysing your finances…</p>
 </div>
 
-<div *ngIf="error && !loading" class="alert alert-error db-error">
-  <span>⚠ {{ error }}</span>
-  <button (click)="loadDashboard()" class="btn-secondary">Retry</button>
+<!-- ══════════════════════════════════════════════════════════
+     ERROR STATE
+══════════════════════════════════════════════════════════ -->
+<div *ngIf="error && !loading" class="state-screen">
+  <div class="state-icon state-icon--error">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+      <path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+    </svg>
+  </div>
+  <h3 class="state-title">Unable to load dashboard</h3>
+  <p class="state-body">{{ error }}</p>
+  <button (click)="loadDashboard()" class="btn btn--primary">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+    Try Again
+  </button>
 </div>
 
-<div *ngIf="hasNoData" class="db-empty">
-  <div class="db-empty-icon">📊</div>
-  <h2>No transactions yet</h2>
-  <p>Upload your bank statement to unlock AI-powered financial insights.</p>
-  <button (click)="goToUpload()" class="btn-primary">Upload Statement</button>
+<!-- ══════════════════════════════════════════════════════════
+     EMPTY STATE
+══════════════════════════════════════════════════════════ -->
+<div *ngIf="hasNoData" class="state-screen state-screen--empty">
+  <div class="empty-art">
+    <svg viewBox="0 0 120 80" fill="none">
+      <rect x="10" y="20" width="100" height="50" rx="6" fill="var(--surface-2)" stroke="var(--border-subtle)" stroke-width="1.2"/>
+      <rect x="10" y="20" width="100" height="14" rx="6" fill="var(--surface-3)"/>
+      <rect x="22" y="46" width="28" height="4" rx="2" fill="var(--border-subtle)"/>
+      <rect x="22" y="56" width="40" height="4" rx="2" fill="var(--border-subtle)"/>
+      <circle cx="94" cy="52" r="14" fill="var(--surface-3)" stroke="var(--gold)" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <path d="M94 46v6l3 3" stroke="var(--gold)" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <h2 class="state-title">No data to display</h2>
+  <p class="state-body">Upload your bank statement to unlock AI-powered insights about your financial health.</p>
+  <button (click)="goToUpload()" class="btn btn--primary btn--lg">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    Upload Statement
+  </button>
 </div>
 
-<div *ngIf="hasData" class="db-root">
+<!-- ══════════════════════════════════════════════════════════
+     MAIN DASHBOARD
+══════════════════════════════════════════════════════════ -->
+<div *ngIf="hasData" class="dashboard">
 
-  <header class="db-header">
-    <div>
-      <p class="db-eyebrow">Financial Health Analyzer</p>
-      <h1 class="db-title">Your money story, clearly explained</h1>
-      <p class="db-subtitle">
-        Totals include all transactions. Spending charts focus on debit expenses and exclude transfer/self-transfer categories.
+  <!-- ── Page Header ─────────────────────────────────────── -->
+  <header class="page-header">
+    <div class="header-left">
+      <div class="header-eyebrow">
+        <span class="eyebrow-dot"></span>
+        Financial Health Analyzer
+      </div>
+      <h1 class="header-title">Your Financial Overview</h1>
+      <p class="header-sub">
+        Spending charts reflect debit expenses only · transfers &amp; self-transfers excluded
       </p>
     </div>
 
-    <div class="db-header-actions">
+    <div class="header-actions">
       <button
         (click)="downloadReport()"
-        class="btn-upload btn-report"
+        class="btn btn--secondary"
         [disabled]="downloadingReport">
-        <span>⬇</span>
-        {{ downloadingReport ? 'Generating...' : 'Download PDF Report' }}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        {{ downloadingReport ? 'Generating…' : 'Export PDF' }}
       </button>
-
-      <button (click)="goToUpload()" class="btn-upload">
-        <span>＋</span> Upload Statement
+      <button (click)="goToUpload()" class="btn btn--primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Upload Statement
       </button>
     </div>
   </header>
 
-  <section class="kpi-grid">
-    <div class="kpi-card kpi-spent">
-      <span class="kpi-icon">💸</span>
-      <div class="kpi-body">
-        <span class="kpi-label">Total Spent</span>
-        <span class="kpi-value">{{ formatCurrency(summary!.totalSpent) }}</span>
-        <span class="kpi-help">Debit / outgoing only</span>
+  <!-- ── KPI Strip ───────────────────────────────────────── -->
+  <section class="kpi-strip">
+
+    <div class="kpi-tile kpi-tile--spent">
+      <div class="kpi-tile__inner">
+        <div class="kpi-tile__header">
+          <span class="kpi-tile__label">Total Spent</span>
+          <span class="kpi-tile__icon kpi-tile__icon--red">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 1 0 0 16A8 8 0 0 0 10 2zm1 11H9V9h2v4zm0-6H9V5h2v2z"/></svg>
+          </span>
+        </div>
+        <div class="kpi-tile__value">{{ formatCurrency(summary!.totalSpent) }}</div>
+        <div class="kpi-tile__meta">Debit &amp; outgoing transactions</div>
       </div>
+      <div class="kpi-tile__bar kpi-tile__bar--red"></div>
     </div>
 
-    <div class="kpi-card kpi-received">
-      <span class="kpi-icon">📥</span>
-      <div class="kpi-body">
-        <span class="kpi-label">Total Received</span>
-        <span class="kpi-value">{{ formatCurrency(summary!.totalReceived) }}</span>
-        <span class="kpi-help">Credit / incoming only</span>
+    <div class="kpi-tile kpi-tile--received">
+      <div class="kpi-tile__inner">
+        <div class="kpi-tile__header">
+          <span class="kpi-tile__label">Total Received</span>
+          <span class="kpi-tile__icon kpi-tile__icon--green">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 1 0 0 16A8 8 0 0 0 10 2zm1 5v4l3 3-1.41 1.41L9 12.41V7h2z"/></svg>
+          </span>
+        </div>
+        <div class="kpi-tile__value">{{ formatCurrency(summary!.totalReceived) }}</div>
+        <div class="kpi-tile__meta">Credit &amp; incoming transactions</div>
       </div>
+      <div class="kpi-tile__bar kpi-tile__bar--green"></div>
     </div>
 
-    <div class="kpi-card">
-      <span class="kpi-icon">🔄</span>
-      <div class="kpi-body">
-        <span class="kpi-label">Transaction Volume</span>
-        <span class="kpi-value">{{ formatCurrency(summary!.totalTransactionVolume) }}</span>
-        <span class="kpi-help">Spent + received</span>
+    <div class="kpi-tile">
+      <div class="kpi-tile__inner">
+        <div class="kpi-tile__header">
+          <span class="kpi-tile__label">Transaction Volume</span>
+          <span class="kpi-tile__icon kpi-tile__icon--blue">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M8 5a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm6 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM7 9H5v2h2V9zm8 0h-2v2h2V9zM7 13H5v2h2v-2zm8 0h-2v2h2v-2z"/></svg>
+          </span>
+        </div>
+        <div class="kpi-tile__value">{{ formatCurrency(summary!.totalTransactionVolume) }}</div>
+        <div class="kpi-tile__meta">Combined debit + credit</div>
       </div>
+      <div class="kpi-tile__bar kpi-tile__bar--blue"></div>
     </div>
 
-    <div class="kpi-card">
-      <span class="kpi-icon">📋</span>
-      <div class="kpi-body">
-        <span class="kpi-label">Total Transactions</span>
-        <span class="kpi-value">{{ summary!.totalTransactions }}</span>
-        <span class="kpi-help">All valid parsed rows</span>
+    <div class="kpi-tile">
+      <div class="kpi-tile__inner">
+        <div class="kpi-tile__header">
+          <span class="kpi-tile__label">Total Transactions</span>
+          <span class="kpi-tile__icon kpi-tile__icon--gold">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M9 2a1 1 0 0 0 0 2h2a1 1 0 1 0 0-2H9zM4 5a2 2 0 0 1 2-2 3 3 0 0 0 3 3h2a3 3 0 0 0 3-3 2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5zm3 4a1 1 0 0 0 0 2h.01a1 1 0 1 0 0-2H7zm3 0a1 1 0 1 0 0 2h3a1 1 0 1 0 0-2h-3zm-3 4a1 1 0 1 0 0 2h.01a1 1 0 1 0 0-2H7zm3 0a1 1 0 1 0 0 2h3a1 1 0 1 0 0-2h-3z"/></svg>
+          </span>
+        </div>
+        <div class="kpi-tile__value">{{ summary!.totalTransactions }}</div>
+        <div class="kpi-tile__meta">All valid parsed rows</div>
       </div>
+      <div class="kpi-tile__bar kpi-tile__bar--gold"></div>
     </div>
 
-    <div class="kpi-card">
-      <span class="kpi-icon">📅</span>
-      <div class="kpi-body">
-        <span class="kpi-label">Avg Monthly Spend</span>
-        <span class="kpi-value">{{ formatCurrency(summary!.averageMonthlySpend) }}</span>
-        <span class="kpi-help">Monthly debit average</span>
+    <div class="kpi-tile">
+      <div class="kpi-tile__inner">
+        <div class="kpi-tile__header">
+          <span class="kpi-tile__label">Avg Monthly Spend</span>
+          <span class="kpi-tile__icon kpi-tile__icon--purple">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M2 11a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-5zm6-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V7zm6-3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1V4z"/></svg>
+          </span>
+        </div>
+        <div class="kpi-tile__value">{{ formatCurrency(summary!.averageMonthlySpend) }}</div>
+        <div class="kpi-tile__meta">Monthly debit average</div>
       </div>
+      <div class="kpi-tile__bar kpi-tile__bar--purple"></div>
     </div>
 
-    <div class="kpi-card kpi-accent">
-      <span class="kpi-icon">🏆</span>
-      <div class="kpi-body">
-        <span class="kpi-label">Top Spending Category</span>
-        <span class="kpi-value kpi-value--text">{{ topCategoryText }}</span>
-        <span class="kpi-help">Transfers excluded</span>
+    <div class="kpi-tile kpi-tile--highlight">
+      <div class="kpi-tile__inner">
+        <div class="kpi-tile__header">
+          <span class="kpi-tile__label">Top Category</span>
+          <span class="kpi-tile__icon kpi-tile__icon--gold">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 0 0 .95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 0 0-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 0 0-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 0 0-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 0 0 .951-.69l1.07-3.292z"/></svg>
+          </span>
+        </div>
+        <div class="kpi-tile__value kpi-tile__value--text">{{ topCategoryText }}</div>
+        <div class="kpi-tile__meta">Transfers excluded</div>
       </div>
+      <div class="kpi-tile__bar kpi-tile__bar--gold"></div>
+    </div>
+
+  </section>
+
+  <!-- ── Secondary Stats Row ────────────────────────────── -->
+  <section class="stats-row">
+    <div class="stat-pill">
+      <span class="stat-pill__name">Avg Expense</span>
+      <span class="stat-pill__value">{{ formatCurrency(summary!.averageExpenseAmount) }}</span>
+      <span class="stat-pill__note">per debit txn</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-pill">
+      <span class="stat-pill__name">Largest Single Expense</span>
+      <span class="stat-pill__value">{{ biggestExpenseText }}</span>
+      <span class="stat-pill__note">biggest debit</span>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-pill">
+      <span class="stat-pill__name">Chart Scope</span>
+      <span class="stat-pill__value stat-pill__value--label">Expenses Only</span>
+      <span class="stat-pill__note">credits &amp; transfers excluded from charts</span>
     </div>
   </section>
 
-  <section class="mini-grid">
-    <div class="mini-card">
-      <span class="mini-label">Average Expense</span>
-      <strong>{{ formatCurrency(summary!.averageExpenseAmount) }}</strong>
-      <span>Per debit transaction</span>
-    </div>
+  <!-- ── Charts Row 1: Category + Risk ─────────────────── -->
+  <div class="grid grid--2">
 
-    <div class="mini-card">
-      <span class="mini-label">Biggest Expense</span>
-      <strong>{{ biggestExpenseText }}</strong>
-      <span>Largest single debit</span>
-    </div>
-
-    <div class="mini-card">
-      <span class="mini-label">Chart Basis</span>
-      <strong>Expense behavior</strong>
-      <span>Credits and transfers do not drive category charts</span>
-    </div>
-  </section>
-
-  <div class="db-row db-row-2">
-    <div class="db-card">
-      <div class="card-heading-row">
-        <h2 class="db-card-title"><span class="db-card-icon">🍩</span> Spending by Category</h2>
-        <span class="chart-badge">Transfers excluded</span>
+    <!-- Category Donut -->
+    <div class="card">
+      <div class="card__head">
+        <div class="card__title-group">
+          <h2 class="card__title">Spending by Category</h2>
+          <p class="card__subtitle">Expense distribution · transfers excluded</p>
+        </div>
+        <span class="badge">Donut chart</span>
       </div>
 
       <ng-container *ngIf="hasCategoryData; else noCategoryData">
-        <div class="chart-wrap chart-wrap--md">
+        <div class="chart-frame chart-frame--donut">
           <canvas #categoryChart></canvas>
         </div>
-
-        <div class="legend-pills">
-          <span
+        <div class="legend-list">
+          <div
             *ngFor="let s of categorySlices; let i = index"
-            class="legend-pill"
-            [style.--pill-color]="'var(--palette-' + i + ')'">
-            {{ s.label }} · {{ formatPercentage(s.percentage) }} · {{ s.transactionCount }} txns
-          </span>
+            class="legend-item"
+            [style.--item-color]="'var(--palette-' + i + ')'">
+            <span class="legend-item__dot"></span>
+            <span class="legend-item__name">{{ s.label }}</span>
+            <span class="legend-item__pct">{{ formatPercentage(s.percentage) }}</span>
+            <span class="legend-item__txn">{{ s.transactionCount }} txns</span>
+          </div>
         </div>
       </ng-container>
 
       <ng-template #noCategoryData>
         <div class="chart-empty">
-          <strong>No expense category data yet</strong>
-          <p>Your uploaded file may contain only credits or transfer/self-transfer transactions.</p>
+          <svg viewBox="0 0 48 48" fill="none" class="chart-empty__icon"><circle cx="24" cy="24" r="20" stroke="var(--border-subtle)" stroke-width="2" stroke-dasharray="6 4"/><path d="M24 16v8l5 5" stroke="var(--text-muted)" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <p>No expense category data available.<br>File may contain only credits or transfers.</p>
         </div>
       </ng-template>
     </div>
 
-    <div class="db-card db-card--risk" [ngClass]="getRiskClass()">
-      <h2 class="db-card-title"><span class="db-card-icon">{{ getRiskIcon() }}</span> Financial Risk Score</h2>
+    <!-- Risk Score -->
+    <div class="card card--risk" [ngClass]="getRiskClass()">
+      <div class="card__head">
+        <div class="card__title-group">
+          <h2 class="card__title">Financial Risk Score</h2>
+          <p class="card__subtitle">AI-calculated financial health indicator</p>
+        </div>
+        <span class="risk-badge"
+          [style.color]="getRiskColour()"
+          [style.border-color]="getRiskColour()"
+          [style.background]="getRiskColour() + '15'">
+          {{ risk!.riskLevel }}
+        </span>
+      </div>
 
-      <div class="risk-gauge-wrap">
-        <div class="chart-wrap chart-wrap--gauge">
+      <div class="risk-visual">
+        <div class="chart-frame chart-frame--gauge">
           <canvas #riskGaugeChart></canvas>
         </div>
-        <div class="risk-gauge-label">
-          <span
-            class="risk-level-badge"
-            [style.color]="getRiskColour()"
-            [style.border-color]="getRiskColour()">
-            {{ risk!.riskLevel }}
-          </span>
-          <span class="risk-pct">{{ riskPercentage }}%</span>
+        <div class="risk-score-display">
+          <span class="risk-score-number" [style.color]="getRiskColour()">{{ riskPercentage }}</span>
+          <span class="risk-score-unit">/ 100</span>
         </div>
       </div>
 
-      <p class="risk-desc">{{ risk!.description }}</p>
-
-      <div class="risk-bar-wrap" aria-label="Risk score progress">
-        <div class="risk-bar-track">
-          <div
-            class="risk-bar-fill"
-            [style.width.%]="riskPercentage"
-            [style.background]="getRiskColour()">
-          </div>
+      <div class="risk-track">
+        <div class="risk-track__fill"
+          [style.width.%]="riskPercentage"
+          [style.background]="getRiskColour()">
         </div>
+      </div>
+
+      <p class="risk-description">{{ risk!.description }}</p>
+
+      <div class="risk-scale">
+        <span class="risk-scale__label risk-scale__label--low">Low</span>
+        <span class="risk-scale__label risk-scale__label--mid">Medium</span>
+        <span class="risk-scale__label risk-scale__label--high">High</span>
       </div>
     </div>
+
   </div>
 
-  <div class="db-row db-row-2">
-    <div class="db-card">
-      <div class="card-heading-row">
-        <h2 class="db-card-title"><span class="db-card-icon">📊</span> Monthly Expense Breakdown</h2>
-        <span class="chart-badge">Oldest → newest</span>
+  <!-- ── Charts Row 2: Monthly + Trend ──────────────────── -->
+  <div class="grid grid--2">
+
+    <div class="card">
+      <div class="card__head">
+        <div class="card__title-group">
+          <h2 class="card__title">Monthly Expense Breakdown</h2>
+          <p class="card__subtitle">Debit outflows by calendar month</p>
+        </div>
+        <span class="badge">Oldest → newest</span>
       </div>
-      <div class="chart-wrap chart-wrap--lg">
+      <div class="chart-frame chart-frame--bar">
         <canvas #monthlyChart></canvas>
       </div>
     </div>
 
-    <div class="db-card" *ngIf="showTrendChart">
-      <div class="card-heading-row">
-        <h2 class="db-card-title"><span class="db-card-icon">📈</span> Spending Trend</h2>
-        <span class="chart-badge">Needs 2+ months</span>
+    <div class="card" *ngIf="showTrendChart">
+      <div class="card__head">
+        <div class="card__title-group">
+          <h2 class="card__title">Spending Trend</h2>
+          <p class="card__subtitle">Month-over-month pattern</p>
+        </div>
+        <span class="badge">2+ months</span>
       </div>
-      <div class="chart-wrap chart-wrap--lg">
+      <div class="chart-frame chart-frame--bar">
         <canvas #trendChart></canvas>
       </div>
     </div>
 
-    <div class="db-card trend-empty" *ngIf="!showTrendChart">
-      <h2 class="db-card-title"><span class="db-card-icon">📈</span> Spending Trend</h2>
-      <p class="muted">Trend analysis will appear after at least 2 months of transactions.</p>
+    <div class="card card--muted" *ngIf="!showTrendChart">
+      <div class="card__head">
+        <div class="card__title-group">
+          <h2 class="card__title">Spending Trend</h2>
+          <p class="card__subtitle">Month-over-month pattern</p>
+        </div>
+      </div>
+      <div class="chart-placeholder">
+        <svg viewBox="0 0 64 48" fill="none" class="chart-placeholder__art">
+          <polyline points="4,40 16,32 28,36 40,20 52,24 60,12" stroke="var(--border-subtle)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="40" cy="20" r="3" fill="var(--gold)" opacity="0.4"/>
+        </svg>
+        <p>Trend analysis requires at least <strong>2 months</strong> of transaction history.</p>
+      </div>
     </div>
+
   </div>
 
-  <div class="db-card">
-    <div class="card-heading-row">
-      <h2 class="db-card-title"><span class="db-card-icon">🏅</span> Top 5 Spending Categories</h2>
-      <span class="chart-badge">Expense categories only</span>
+  <!-- ── Top 5 Categories ────────────────────────────────── -->
+  <div class="card">
+    <div class="card__head">
+      <div class="card__title-group">
+        <h2 class="card__title">Top 5 Spending Categories</h2>
+        <p class="card__subtitle">Ranked by total expense amount · transfers excluded</p>
+      </div>
+      <span class="badge">Bar chart</span>
     </div>
 
-    <ng-container *ngIf="hasCategoryData; else noTopCategoryData">
-      <div class="chart-wrap chart-wrap--top">
+    <ng-container *ngIf="hasCategoryData; else noTopCat">
+      <div class="chart-frame chart-frame--bar-tall">
         <canvas #topCatChart></canvas>
       </div>
     </ng-container>
 
-    <ng-template #noTopCategoryData>
-      <div class="chart-empty compact">
-        <strong>No spending categories to rank yet.</strong>
+    <ng-template #noTopCat>
+      <div class="chart-empty chart-empty--compact">
+        <p>No ranked spending categories available yet.</p>
       </div>
     </ng-template>
   </div>
 
-  <div class="db-card" *ngIf="insights.length">
-    <h2 class="db-card-title"><span class="db-card-icon">🤖</span> AI Insights</h2>
+  <!-- ── AI Insights ─────────────────────────────────────── -->
+  <div class="card" *ngIf="insights.length">
+    <div class="card__head">
+      <div class="card__title-group">
+        <h2 class="card__title">AI Insights</h2>
+        <p class="card__subtitle">Personalised observations from your transaction data</p>
+      </div>
+      <span class="badge badge--ai">{{ insights.length }} insights</span>
+    </div>
+
     <div class="insights-grid">
       <div
         *ngFor="let ins of insights"
-        class="insight-card"
-        [ngClass]="'insight-' + ins.type">
-        <span class="insight-ico">{{ getInsightIcon(ins.type) }}</span>
-        <div class="insight-text">
-          <strong>{{ ins.title }}</strong>
-          <p>{{ ins.message }}</p>
+        class="insight"
+        [ngClass]="'insight--' + ins.type">
+        <div class="insight__icon-wrap">
+          <span class="insight__icon">{{ getInsightIcon(ins.type) }}</span>
         </div>
+        <div class="insight__body">
+          <strong class="insight__title">{{ ins.title }}</strong>
+          <p class="insight__text">{{ ins.message }}</p>
+        </div>
+        <div class="insight__accent"></div>
       </div>
     </div>
   </div>
 
-  <div class="db-card">
-    <div class="card-heading-row">
-      <h2 class="db-card-title"><span class="db-card-icon">📆</span> Monthly Breakdown</h2>
-      <span class="chart-badge">Newest first</span>
+  <!-- ── Monthly Breakdown Table ──────────────────────────── -->
+  <div class="card">
+    <div class="card__head">
+      <div class="card__title-group">
+        <h2 class="card__title">Monthly Breakdown</h2>
+        <p class="card__subtitle">Debit totals per calendar month · most recent first</p>
+      </div>
+      <span class="badge">Table</span>
     </div>
-    <p class="table-note">This table shows monthly debit/outgoing totals. Category charts exclude transfers; monthly totals follow the backend monthly debit summary.</p>
 
-    <div class="table-scroll">
-      <table class="db-table">
+    <div class="table-wrap">
+      <table class="data-table">
         <thead>
           <tr>
             <th>Month</th>
-            <th class="num">Total Spent</th>
-            <th class="num">Debit Transactions</th>
-            <th class="num">vs Previous Month</th>
-            <th class="num">% Change</th>
+            <th class="align-right">Total Spent</th>
+            <th class="align-right">Transactions</th>
+            <th class="align-right">vs Prev Month</th>
+            <th class="align-right">% Change</th>
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let m of summary!.monthlyBreakdown">
-            <td class="month-name">{{ m.monthName }}</td>
-            <td class="num">{{ formatCurrency(m.total) }}</td>
-            <td class="num">{{ m.transactionCount }}</td>
-            <td class="num">
-              <span
-                *ngIf="m.changeFromPreviousMonth !== null"
-                [class.text-danger]="isPositiveChange(m.changeFromPreviousMonth)"
-                [class.text-success]="!isPositiveChange(m.changeFromPreviousMonth)">
+          <tr *ngFor="let m of summary!.monthlyBreakdown; let even = even" [class.row-alt]="even">
+            <td class="col-month">
+              <span class="month-dot"></span>
+              {{ m.monthName }}
+            </td>
+            <td class="align-right col-amount">{{ formatCurrency(m.total) }}</td>
+            <td class="align-right col-count">{{ m.transactionCount }}</td>
+            <td class="align-right">
+              <span *ngIf="m.changeFromPreviousMonth !== null"
+                class="change-pill"
+                [class.change-pill--up]="isPositiveChange(m.changeFromPreviousMonth)"
+                [class.change-pill--down]="!isPositiveChange(m.changeFromPreviousMonth)">
                 {{ formatChange(m.changeFromPreviousMonth) }}
               </span>
-              <span *ngIf="m.changeFromPreviousMonth === null" class="muted">—</span>
+              <span *ngIf="m.changeFromPreviousMonth === null" class="col-empty">—</span>
             </td>
-            <td class="num">
-              <span
-                *ngIf="m.percentageChangeFromPreviousMonth !== null"
-                [class.text-danger]="isPositiveChange(m.percentageChangeFromPreviousMonth)"
-                [class.text-success]="!isPositiveChange(m.percentageChangeFromPreviousMonth)">
+            <td class="align-right">
+              <span *ngIf="m.percentageChangeFromPreviousMonth !== null"
+                class="change-pill"
+                [class.change-pill--up]="isPositiveChange(m.percentageChangeFromPreviousMonth)"
+                [class.change-pill--down]="!isPositiveChange(m.percentageChangeFromPreviousMonth)">
                 {{ formatChangePct(m.percentageChangeFromPreviousMonth) }}
               </span>
-              <span *ngIf="m.percentageChangeFromPreviousMonth === null" class="muted">First month</span>
+              <span *ngIf="m.percentageChangeFromPreviousMonth === null" class="col-first">First month</span>
             </td>
           </tr>
         </tbody>
