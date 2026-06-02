@@ -22,6 +22,8 @@ export interface RiskData {
   riskScore: number;
   predictedAt: string;
   description: string;
+  riskFactors: string[];
+  positiveSignals: string[];
 }
 
 export interface InsightData {

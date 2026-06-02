@@ -10,9 +10,13 @@ describe('DashboardService', () => {
 
   const summary: DashboardSummary = {
     totalSpent: 1500,
+    totalReceived: 2000,
+    totalTransactionVolume: 3500,
     totalTransactions: 3,
+    averageExpenseAmount: 500,
     averageMonthlySpend: 1500,
     highestSpendingCategory: 'Food',
+    biggestTransaction: null,
     categoryBreakdown: [
       {
         category: 'Food',
@@ -72,9 +76,11 @@ describe('DashboardService', () => {
 
     req.flush({
       riskLevel: 'Low',
-      riskScore: 20,
+      riskScore: 0.2,
       predictedAt: '2026-05-27',
-      description: 'Healthy'
+      description: 'Healthy',
+      riskFactors: [],
+      positiveSignals: ['Stable spending']
     });
   });
 
