@@ -9,6 +9,8 @@ export interface Transaction {
   description: string;
   amount: number;
   category: string;
+  isCredit?: boolean;
+  type?: 'Credit' | 'Debit' | string;
 }
 
 export interface CategorySummary {
@@ -34,7 +36,8 @@ export interface SpendingSummary {
   totalReceived: number;
   totalTransactionVolume: number;
   totalTransactions: number;
-  averageTransactionAmount: number;
+  averageExpenseAmount: number;
+  averageTransactionAmount?: number;
   averageMonthlySpend: number;
   highestSpendingCategory: string;
   biggestTransaction: Transaction | null;

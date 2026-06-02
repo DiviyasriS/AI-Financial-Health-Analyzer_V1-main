@@ -2,21 +2,23 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { CategorySummary, MonthlySummary } from './transaction.service';
+import { CategorySummary, MonthlySummary, Transaction } from './transaction.service';
 
 export interface DashboardSummary {
   totalSpent: number;
   totalReceived: number;
   totalTransactionVolume: number;
   totalTransactions: number;
+  averageExpenseAmount: number;
   averageMonthlySpend: number;
   highestSpendingCategory: string;
+  biggestTransaction: Transaction | null;
   categoryBreakdown: CategorySummary[];
   monthlyBreakdown: MonthlySummary[];
 }
 
 export interface RiskData {
-  riskLevel: string;      // "Low" | "Medium" | "High" | "Unknown"
+  riskLevel: string;
   riskScore: number;
   predictedAt: string;
   description: string;
@@ -27,18 +29,23 @@ export interface InsightData {
   title: string;
   message: string;
   priority: number;
-  type: string;           // "info" | "warning" | "danger"
+  type: string;
   generatedAt: string;
 }
+
 export interface ChartSlice {
   label: string;
   value: number;
   percentage: number;
+  transactionCount: number;
 }
 
 export interface MonthlyBar {
   label: string;
   total: number;
+  transactionCount: number;
+  year: number;
+  month: number;
 }
 
 @Injectable({
@@ -63,28 +70,31 @@ export class DashboardService {
   }
 
   toCategorySlices(summary: DashboardSummary): ChartSlice[] {
-  return summary.categoryBreakdown
-    .filter(item => item.category.toLowerCase() !== 'transfer')
-    .map((item: CategorySummary): ChartSlice => {
-      return {
+    return summary.categoryBreakdown
+      .filter(item => item.total > 0)
+      .map((item: CategorySummary): ChartSlice => ({
         label: item.category,
         value: item.total,
-        percentage: item.percentageOfTotal
-      };
-    });
-}
+        percentage: item.percentageOfTotal,
+        transactionCount: item.transactionCount
+      }));
+  }
 
-toMonthlyBars(summary: DashboardSummary): MonthlyBar[] {
-  return summary.monthlyBreakdown.map((item: MonthlySummary): MonthlyBar => {
-    return {
-      label: item.monthName,
-      total: item.total
-    };
-  });
-}
-downloadFinancialReport(): Observable<Blob> {
-  return this.http.get(`${environment.apiUrl}/reports/financial/pdf`, {
-    responseType: 'blob'
-  });
-}
+  toMonthlyBars(summary: DashboardSummary): MonthlyBar[] {
+    return [...summary.monthlyBreakdown]
+      .sort((a, b) => (a.year - b.year) || (a.month - b.month))
+      .map((item: MonthlySummary): MonthlyBar => ({
+        label: item.monthName,
+        total: item.total,
+        transactionCount: item.transactionCount,
+        year: item.year,
+        month: item.month
+      }));
+  }
+
+  downloadFinancialReport(): Observable<Blob> {
+    return this.http.get(`${environment.apiUrl}/reports/financial/pdf`, {
+      responseType: 'blob'
+    });
+  }
 }

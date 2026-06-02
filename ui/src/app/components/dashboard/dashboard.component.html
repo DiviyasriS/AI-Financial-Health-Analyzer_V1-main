@@ -1,22 +1,13 @@
-<!-- ══════════════════════════════════════════════════════════════════════
-     LOADING STATE
-══════════════════════════════════════════════════════════════════════ -->
 <div *ngIf="loading" class="db-loading">
   <div class="db-spinner"></div>
   <p>Crunching your numbers…</p>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════════
-     ERROR STATE
-══════════════════════════════════════════════════════════════════════ -->
 <div *ngIf="error && !loading" class="alert alert-error db-error">
   <span>⚠ {{ error }}</span>
   <button (click)="loadDashboard()" class="btn-secondary">Retry</button>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════════
-     EMPTY STATE
-══════════════════════════════════════════════════════════════════════ -->
 <div *ngIf="hasNoData" class="db-empty">
   <div class="db-empty-icon">📊</div>
   <h2>No transactions yet</h2>
@@ -24,119 +15,140 @@
   <button (click)="goToUpload()" class="btn-primary">Upload Statement</button>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════════════
-     MAIN DASHBOARD
-══════════════════════════════════════════════════════════════════════ -->
 <div *ngIf="hasData" class="db-root">
 
-  <!-- ── Page header ─────────────────────────────────────────────────── -->
   <header class="db-header">
     <div>
-      <h1 class="db-title">Financial Dashboard</h1>
-      <p class="db-subtitle">AI-powered spending analysis</p>
+      <p class="db-eyebrow">Financial Health Analyzer</p>
+      <h1 class="db-title">Your money story, clearly explained</h1>
+      <p class="db-subtitle">
+        Totals include all transactions. Spending charts focus on debit expenses and exclude transfer/self-transfer categories.
+      </p>
     </div>
-   <div class="db-header-actions">
- 
- 
-    <button
-    (click)="downloadReport()"
-    class="btn-upload"
-    [disabled]="downloadingReport">
-    <span>⬇</span>
-    {{ downloadingReport ? 'Generating...' : 'Download PDF Report' }}
-  </button>
 
-  <button (click)="goToUpload()" class="btn-upload">
-    <span>＋</span> Upload Statement
-  </button>
+    <div class="db-header-actions">
+      <button
+        (click)="downloadReport()"
+        class="btn-upload btn-report"
+        [disabled]="downloadingReport">
+        <span>⬇</span>
+        {{ downloadingReport ? 'Generating...' : 'Download PDF Report' }}
+      </button>
 
-
-</div>
+      <button (click)="goToUpload()" class="btn-upload">
+        <span>＋</span> Upload Statement
+      </button>
+    </div>
   </header>
 
-  <!-- ── KPI strip ───────────────────────────────────────────────────── -->
   <section class="kpi-grid">
-    <div class="kpi-card">
-      <span class="kpi-icon">💰</span>
+    <div class="kpi-card kpi-spent">
+      <span class="kpi-icon">💸</span>
       <div class="kpi-body">
         <span class="kpi-label">Total Spent</span>
         <span class="kpi-value">{{ formatCurrency(summary!.totalSpent) }}</span>
+        <span class="kpi-help">Debit / outgoing only</span>
       </div>
     </div>
 
-<div class="kpi-card">
-  <span class="kpi-icon">📥</span>
-  <div class="kpi-body">
-    <span class="kpi-label">Total Received</span>
-    <span class="kpi-value">{{ formatCurrency(summary!.totalReceived) }}</span>
-  </div>
-</div>
+    <div class="kpi-card kpi-received">
+      <span class="kpi-icon">📥</span>
+      <div class="kpi-body">
+        <span class="kpi-label">Total Received</span>
+        <span class="kpi-value">{{ formatCurrency(summary!.totalReceived) }}</span>
+        <span class="kpi-help">Credit / incoming only</span>
+      </div>
+    </div>
 
-<div class="kpi-card">
-  <span class="kpi-icon">🔄</span>
-  <div class="kpi-body">
-    <span class="kpi-label">Transaction Volume</span>
-    <span class="kpi-value">{{ formatCurrency(summary!.totalTransactionVolume) }}</span>
-  </div>
-</div>
+    <div class="kpi-card">
+      <span class="kpi-icon">🔄</span>
+      <div class="kpi-body">
+        <span class="kpi-label">Transaction Volume</span>
+        <span class="kpi-value">{{ formatCurrency(summary!.totalTransactionVolume) }}</span>
+        <span class="kpi-help">Spent + received</span>
+      </div>
+    </div>
 
     <div class="kpi-card">
       <span class="kpi-icon">📋</span>
       <div class="kpi-body">
-        <span class="kpi-label">Transactions</span>
+        <span class="kpi-label">Total Transactions</span>
         <span class="kpi-value">{{ summary!.totalTransactions }}</span>
+        <span class="kpi-help">All valid parsed rows</span>
       </div>
     </div>
 
     <div class="kpi-card">
       <span class="kpi-icon">📅</span>
       <div class="kpi-body">
-        <span class="kpi-label">Avg / Month</span>
+        <span class="kpi-label">Avg Monthly Spend</span>
         <span class="kpi-value">{{ formatCurrency(summary!.averageMonthlySpend) }}</span>
+        <span class="kpi-help">Monthly debit average</span>
       </div>
     </div>
 
     <div class="kpi-card kpi-accent">
       <span class="kpi-icon">🏆</span>
       <div class="kpi-body">
-        <span class="kpi-label">Top Category</span>
-        <span class="kpi-value">{{ summary!.highestSpendingCategory }}</span>
+        <span class="kpi-label">Top Spending Category</span>
+        <span class="kpi-value kpi-value--text">{{ topCategoryText }}</span>
+        <span class="kpi-help">Transfers excluded</span>
       </div>
     </div>
   </section>
 
-  
-
-  <!-- ── Row 1 : Category Doughnut + Risk Gauge ─────────────────────── -->
-  <div class="db-row db-row-2">
-
-    <!-- Category donut -->
-    <div class="db-card">
-      <h2 class="db-card-title">
-        <span class="db-card-icon">🍩</span>
-        Spending by Category
-      </h2>
-      <div class="chart-wrap chart-wrap--md">
-        <canvas #categoryChart></canvas>
-      </div>
-
-      <!-- Legend pills below the chart on mobile -->
-      <div class="legend-pills">
-        <span
-          *ngFor="let s of categorySlices; let i = index"
-          class="legend-pill"
-          [style.--pill-color]="'var(--palette-' + i + ')'">
-          {{ s.label }} · {{ s.percentage }}%
-        </span>
-      </div>
+  <section class="mini-grid">
+    <div class="mini-card">
+      <span class="mini-label">Average Expense</span>
+      <strong>{{ formatCurrency(summary!.averageExpenseAmount) }}</strong>
+      <span>Per debit transaction</span>
     </div>
 
-    <!-- Risk gauge -->
+    <div class="mini-card">
+      <span class="mini-label">Biggest Expense</span>
+      <strong>{{ biggestExpenseText }}</strong>
+      <span>Largest single debit</span>
+    </div>
+
+    <div class="mini-card">
+      <span class="mini-label">Chart Basis</span>
+      <strong>Expense behavior</strong>
+      <span>Credits and transfers do not drive category charts</span>
+    </div>
+  </section>
+
+  <div class="db-row db-row-2">
+    <div class="db-card">
+      <div class="card-heading-row">
+        <h2 class="db-card-title"><span class="db-card-icon">🍩</span> Spending by Category</h2>
+        <span class="chart-badge">Transfers excluded</span>
+      </div>
+
+      <ng-container *ngIf="hasCategoryData; else noCategoryData">
+        <div class="chart-wrap chart-wrap--md">
+          <canvas #categoryChart></canvas>
+        </div>
+
+        <div class="legend-pills">
+          <span
+            *ngFor="let s of categorySlices; let i = index"
+            class="legend-pill"
+            [style.--pill-color]="'var(--palette-' + i + ')'">
+            {{ s.label }} · {{ formatPercentage(s.percentage) }} · {{ s.transactionCount }} txns
+          </span>
+        </div>
+      </ng-container>
+
+      <ng-template #noCategoryData>
+        <div class="chart-empty">
+          <strong>No expense category data yet</strong>
+          <p>Your uploaded file may contain only credits or transfer/self-transfer transactions.</p>
+        </div>
+      </ng-template>
+    </div>
+
     <div class="db-card db-card--risk" [ngClass]="getRiskClass()">
-      <h2 class="db-card-title">
-        <span class="db-card-icon">{{ getRiskIcon() }}</span>
-        Financial Risk Score
-      </h2>
+      <h2 class="db-card-title"><span class="db-card-icon">{{ getRiskIcon() }}</span> Financial Risk Score</h2>
 
       <div class="risk-gauge-wrap">
         <div class="chart-wrap chart-wrap--gauge">
@@ -149,78 +161,72 @@
             [style.border-color]="getRiskColour()">
             {{ risk!.riskLevel }}
           </span>
-          <span class="risk-pct">{{ (risk!.riskScore * 100).toFixed(0) }}%</span>
+          <span class="risk-pct">{{ riskPercentage }}%</span>
         </div>
       </div>
 
       <p class="risk-desc">{{ risk!.description }}</p>
 
-      <!-- Score bar -->
-      <div class="risk-bar-wrap">
+      <div class="risk-bar-wrap" aria-label="Risk score progress">
         <div class="risk-bar-track">
           <div
             class="risk-bar-fill"
-            [style.width.%]="risk!.riskScore * 100"
+            [style.width.%]="riskPercentage"
             [style.background]="getRiskColour()">
           </div>
         </div>
       </div>
     </div>
-
   </div>
 
-  <!-- ── Row 2 : Monthly Bar + Trend Line ───────────────────────────── -->
   <div class="db-row db-row-2">
-
     <div class="db-card">
-      <h2 class="db-card-title">
-        <span class="db-card-icon">📊</span>
-        Monthly Spending
-      </h2>
+      <div class="card-heading-row">
+        <h2 class="db-card-title"><span class="db-card-icon">📊</span> Monthly Expense Breakdown</h2>
+        <span class="chart-badge">Oldest → newest</span>
+      </div>
       <div class="chart-wrap chart-wrap--lg">
         <canvas #monthlyChart></canvas>
       </div>
     </div>
 
     <div class="db-card" *ngIf="showTrendChart">
-  <h2 class="db-card-title">
-    <span class="db-card-icon">📈</span>
-    Spending Trend
-  </h2>
-  <div class="chart-wrap chart-wrap--lg">
-    <canvas #trendChart></canvas>
-  </div>
-</div>
+      <div class="card-heading-row">
+        <h2 class="db-card-title"><span class="db-card-icon">📈</span> Spending Trend</h2>
+        <span class="chart-badge">Needs 2+ months</span>
+      </div>
+      <div class="chart-wrap chart-wrap--lg">
+        <canvas #trendChart></canvas>
+      </div>
+    </div>
 
-<div class="db-card trend-empty" *ngIf="!showTrendChart">
-  <h2 class="db-card-title">
-    <span class="db-card-icon">📈</span>
-    Spending Trend
-  </h2>
-  <p class="muted">
-    Trend analysis will appear after at least 2 months of transactions.
-  </p>
-</div>
-
-  </div>
-
-  <!-- ── Row 3 : Top Categories horizontal bar ──────────────────────── -->
-  <div class="db-card">
-    <h2 class="db-card-title">
-      <span class="db-card-icon">🏅</span>
-      Top 5 Spending Categories
-    </h2>
-    <div class="chart-wrap chart-wrap--top">
-      <canvas #topCatChart></canvas>
+    <div class="db-card trend-empty" *ngIf="!showTrendChart">
+      <h2 class="db-card-title"><span class="db-card-icon">📈</span> Spending Trend</h2>
+      <p class="muted">Trend analysis will appear after at least 2 months of transactions.</p>
     </div>
   </div>
 
-  <!-- ── Row 4 : Insights ───────────────────────────────────────────── -->
+  <div class="db-card">
+    <div class="card-heading-row">
+      <h2 class="db-card-title"><span class="db-card-icon">🏅</span> Top 5 Spending Categories</h2>
+      <span class="chart-badge">Expense categories only</span>
+    </div>
+
+    <ng-container *ngIf="hasCategoryData; else noTopCategoryData">
+      <div class="chart-wrap chart-wrap--top">
+        <canvas #topCatChart></canvas>
+      </div>
+    </ng-container>
+
+    <ng-template #noTopCategoryData>
+      <div class="chart-empty compact">
+        <strong>No spending categories to rank yet.</strong>
+      </div>
+    </ng-template>
+  </div>
+
   <div class="db-card" *ngIf="insights.length">
-    <h2 class="db-card-title">
-      <span class="db-card-icon">🤖</span>
-      AI Insights
-    </h2>
+    <h2 class="db-card-title"><span class="db-card-icon">🤖</span> AI Insights</h2>
     <div class="insights-grid">
       <div
         *ngFor="let ins of insights"
@@ -235,20 +241,21 @@
     </div>
   </div>
 
-  <!-- ── Row 5 : Monthly breakdown table ────────────────────────────── -->
   <div class="db-card">
-    <h2 class="db-card-title">
-      <span class="db-card-icon">📆</span>
-      Monthly Breakdown
-    </h2>
+    <div class="card-heading-row">
+      <h2 class="db-card-title"><span class="db-card-icon">📆</span> Monthly Breakdown</h2>
+      <span class="chart-badge">Newest first</span>
+    </div>
+    <p class="table-note">This table shows monthly debit/outgoing totals. Category charts exclude transfers; monthly totals follow the backend monthly debit summary.</p>
+
     <div class="table-scroll">
       <table class="db-table">
         <thead>
           <tr>
             <th>Month</th>
             <th class="num">Total Spent</th>
-            <th class="num">Expense Transactions</th>
-            <th class="num">vs Prev Month</th>
+            <th class="num">Debit Transactions</th>
+            <th class="num">vs Previous Month</th>
             <th class="num">% Change</th>
           </tr>
         </thead>
@@ -281,4 +288,4 @@
     </div>
   </div>
 
-</div><!-- /db-root -->
+</div>

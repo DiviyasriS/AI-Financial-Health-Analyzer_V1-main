@@ -7,8 +7,10 @@ public class DashboardSummaryDto
     public decimal TotalTransactionVolume { get; set; }
 
     public int TotalTransactions { get; set; }
+    public decimal AverageExpenseAmount { get; set; }
     public decimal AverageMonthlySpend { get; set; }
     public string HighestSpendingCategory { get; set; } = string.Empty;
+    public TransactionDto? BiggestTransaction { get; set; }
 
     public List<CategorySummaryDto> CategoryBreakdown { get; set; } = new();
     public List<MonthlySummaryDto> MonthlyBreakdown { get; set; } = new();

@@ -50,8 +50,10 @@ public class DashboardController : ControllerBase
     TotalReceived           = summary.TotalReceived,
     TotalTransactionVolume  = summary.TotalTransactionVolume,
     TotalTransactions       = summary.TotalTransactions,
+    AverageExpenseAmount    = summary.AverageExpenseAmount,
     AverageMonthlySpend     = summary.AverageMonthlySpend,
     HighestSpendingCategory = summary.HighestSpendingCategory,
+    BiggestTransaction      = summary.BiggestTransaction,
     CategoryBreakdown       = summary.CategoryBreakdown,
     MonthlyBreakdown        = summary.MonthlyBreakdown
 };
