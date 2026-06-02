@@ -29,23 +29,23 @@ public class TransactionService : ITransactionService
 
         ParsedFileResult parsed = extension switch
         {
-            ".csv" => await _csvService.ParseAsync(fileStream, userId),
+            ".csv"  => await _csvService.ParseAsync(fileStream, userId),
             ".xlsx" => await _xlsxService.ParseAsync(fileStream, userId),
-            ".xls" => await _xlsxService.ParseAsync(fileStream, userId),
-            ".pdf" => await _pdfService.ParseAsync(fileStream, userId),
-            _ => throw new InvalidOperationException($"Unsupported file type: {extension}")
+            ".xls"  => await _xlsxService.ParseAsync(fileStream, userId),
+            ".pdf"  => await _pdfService.ParseAsync(fileStream, userId),
+            _       => throw new InvalidOperationException($"Unsupported file type: {extension}")
         };
 
         if (parsed.Transactions.Count == 0)
         {
             return new FileProcessingResultDto
             {
-                SavedCount = 0,
+                SavedCount     = 0,
                 DuplicateCount = parsed.DuplicateRows,
-                SkippedCount = parsed.SkippedRows,
+                SkippedCount   = parsed.SkippedRows,
                 TotalRowsFound = parsed.TotalRowsFound,
-                FileType = extension.TrimStart('.').ToUpperInvariant(),
-                Message = BuildSummaryMessage(parsed.TotalRowsFound, 0, parsed.DuplicateRows, parsed.SkippedRows)
+                FileType       = extension.TrimStart('.').ToUpperInvariant(),
+                Message        = BuildSummaryMessage(parsed.TotalRowsFound, 0, parsed.DuplicateRows, parsed.SkippedRows)
             };
         }
 
@@ -67,13 +67,9 @@ public class TransactionService : ITransactionService
             var key = MakeDuplicateKey(tx.Date, tx.Description, tx.Amount);
 
             if (existingKeys.Contains(key))
-            {
                 duplicateCount++;
-            }
             else
-            {
                 nonDuplicates.Add(tx);
-            }
         }
 
         string? monthWarning = null;
@@ -95,7 +91,6 @@ public class TransactionService : ITransactionService
                 if (existingCount > 0)
                 {
                     var monthName = new DateTime(year, month, 1).ToString("MMMM yyyy");
-
                     monthWarning =
                         $"Warning: {existingCount} transactions for {monthName} already exist. " +
                         "Duplicates were skipped automatically.";
@@ -107,24 +102,18 @@ public class TransactionService : ITransactionService
 
         _logger.LogInformation(
             "File processed for user {UserId}: {Saved} saved, {Duplicates} duplicates, {Skipped} skipped",
-            userId,
-            nonDuplicates.Count,
-            duplicateCount,
-            parsed.SkippedRows);
+            userId, nonDuplicates.Count, duplicateCount, parsed.SkippedRows);
 
         return new FileProcessingResultDto
         {
-            SavedCount = nonDuplicates.Count,
+            SavedCount     = nonDuplicates.Count,
             DuplicateCount = duplicateCount,
-            SkippedCount = parsed.SkippedRows,
+            SkippedCount   = parsed.SkippedRows,
             TotalRowsFound = parsed.TotalRowsFound,
-            FileType = extension.TrimStart('.').ToUpperInvariant(),
-            Message = BuildSummaryMessage(
-                parsed.TotalRowsFound,
-                nonDuplicates.Count,
-                duplicateCount,
-                parsed.SkippedRows),
-            MonthWarning = monthWarning
+            FileType       = extension.TrimStart('.').ToUpperInvariant(),
+            Message        = BuildSummaryMessage(
+                parsed.TotalRowsFound, nonDuplicates.Count, duplicateCount, parsed.SkippedRows),
+            MonthWarning   = monthWarning
         };
     }
 
@@ -136,11 +125,13 @@ public class TransactionService : ITransactionService
 
         return transactions.Select(t => new TransactionDto
         {
-            Id = t.Id,
-            Date = t.Date,
+            Id          = t.Id,
+            Date        = t.Date,
             Description = t.Description,
-            Amount = Math.Abs(t.Amount),
-            Category = t.Category
+            Amount      = Math.Abs(t.Amount),
+            Category    = t.Category,
+            IsCredit    = t.IsCredit,
+            Type        = t.IsCredit ? "Credit" : "Debit"
         }).ToList();
     }
 
@@ -154,37 +145,38 @@ public class TransactionService : ITransactionService
         {
             return new SpendingSummaryDto
             {
-                TotalSpent = 0,
-                TotalReceived = 0,
+                TotalSpent             = 0,
+                TotalReceived          = 0,
                 TotalTransactionVolume = 0,
-                TotalTransactions = 0,
-                AverageMonthlySpend = 0,
-                AverageTransactionAmount = 0,
+                TotalTransactions      = 0,
+                AverageMonthlySpend    = 0,
+                AverageExpenseAmount   = 0,
                 HighestSpendingCategory = "N/A",
-                CategoryBreakdown = new List<CategorySummaryDto>(),
-                MonthlyBreakdown = new List<MonthlySummaryDto>()
+                CategoryBreakdown      = new List<CategorySummaryDto>(),
+                MonthlyBreakdown       = new List<MonthlySummaryDto>()
             };
         }
 
-        var expenseTransactions = transactions
-            .Where(t => !t.IsCredit)
-            .ToList();
+        // ── Totals ────────────────────────────────────────────────────────────
+        // TotalSpent  = ALL outgoing (debits), including transfers
+        // TotalReceived = ALL incoming (credits)
+        var expenseTransactions  = transactions.Where(TransactionFilters.IsDebit).ToList();
+        var receivedTransactions = transactions.Where(TransactionFilters.IsCredit).ToList();
 
-        var receivedTransactions = transactions
-            .Where(t => t.IsCredit)
-            .ToList();
-
-        var totalSpent = expenseTransactions.Sum(t => Math.Abs(t.Amount));
-        var totalReceived = receivedTransactions.Sum(t => Math.Abs(t.Amount));
+        var totalSpent             = expenseTransactions.Sum(t => Math.Abs(t.Amount));
+        var totalReceived          = receivedTransactions.Sum(t => Math.Abs(t.Amount));
         var totalTransactionVolume = totalSpent + totalReceived;
 
-        var analyticsExpenseTransactions = expenseTransactions
-            .Where(IsSpendingAnalyticsTransaction)
+        // ── Analytics transactions (exclude credits and transfers) ────────────
+        // Used for category breakdown, insights, and risk score — NOT for totals
+        var analyticsTransactions = transactions
+            .Where(TransactionFilters.IsSpendingAnalytics)
             .ToList();
 
-        var analyticsTotalSpent = analyticsExpenseTransactions.Sum(t => Math.Abs(t.Amount));
+        var analyticsTotalSpent = analyticsTransactions.Sum(t => Math.Abs(t.Amount));
 
-        var categoryBreakdown = analyticsExpenseTransactions
+        // ── Category breakdown ────────────────────────────────────────────────
+        var categoryBreakdown = analyticsTransactions
             .GroupBy(t => string.IsNullOrWhiteSpace(t.Category) ? "Uncategorized" : t.Category)
             .Select(g =>
             {
@@ -192,22 +184,24 @@ public class TransactionService : ITransactionService
 
                 return new CategorySummaryDto
                 {
-                    Category = g.Key,
-                    Total = categoryTotal,
-                    TransactionCount = g.Count(),
-                    PercentageOfTotal = analyticsTotalSpent > 0
+                    Category           = g.Key,
+                    Total              = categoryTotal,
+                    TransactionCount   = g.Count(),
+                    PercentageOfTotal  = analyticsTotalSpent > 0
                         ? Math.Round((categoryTotal / analyticsTotalSpent) * 100, 2)
                         : 0,
-                    TopTransactions = g
+                    TopTransactions    = g
                         .OrderByDescending(t => Math.Abs(t.Amount))
                         .Take(3)
                         .Select(t => new TransactionDto
                         {
-                            Id = t.Id,
-                            Date = t.Date,
+                            Id          = t.Id,
+                            Date        = t.Date,
                             Description = t.Description,
-                            Amount = Math.Abs(t.Amount),
-                            Category = t.Category
+                            Amount      = Math.Abs(t.Amount),
+                            Category    = t.Category,
+                            IsCredit    = false,
+                            Type        = "Debit"
                         })
                         .ToList()
                 };
@@ -215,103 +209,91 @@ public class TransactionService : ITransactionService
             .OrderByDescending(c => c.Total)
             .ToList();
 
+        // ── Monthly breakdown (expense/debit only, ascending for delta calc) ──
         var monthlyRaw = expenseTransactions
             .GroupBy(t => new { t.Date.Year, t.Date.Month })
             .Select(g => new
             {
                 g.Key.Year,
                 g.Key.Month,
-                Total = g.Sum(t => Math.Abs(t.Amount)),
+                TotalSpent       = g.Sum(t => Math.Abs(t.Amount)),
                 TransactionCount = g.Count()
             })
             .OrderBy(m => m.Year)
             .ThenBy(m => m.Month)
             .ToList();
 
-        var monthlyBreakdown = new List<MonthlySummaryDto>();
+        // Build the summary list in ASCENDING order first so deltas are correct,
+        // then reverse to show newest-first in the UI.
+        var monthlyAscending = new List<MonthlySummaryDto>();
 
         for (int i = 0; i < monthlyRaw.Count; i++)
         {
-            var current = monthlyRaw[i];
+            var current  = monthlyRaw[i];
             var previous = i > 0 ? monthlyRaw[i - 1] : null;
 
-            var change = previous != null
-                ? current.Total - previous.Total
-                : (decimal?)null;
+            decimal? change    = previous != null ? current.TotalSpent - previous.TotalSpent : null;
+            decimal? changePct = previous?.TotalSpent > 0
+                ? Math.Round(((current.TotalSpent - previous.TotalSpent) / previous.TotalSpent) * 100, 2)
+                : null;
 
-            var changePct = previous?.Total > 0
-                ? Math.Round(((current.Total - previous.Total) / previous.Total) * 100, 2)
-                : (decimal?)null;
-
-            monthlyBreakdown.Add(new MonthlySummaryDto
+            monthlyAscending.Add(new MonthlySummaryDto
             {
-                Year = current.Year,
-                Month = current.Month,
-                MonthName = new DateTime(current.Year, current.Month, 1).ToString("MMMM yyyy"),
-                Total = current.Total,
-                TransactionCount = current.TransactionCount,
-                ChangeFromPreviousMonth = change,
+                Year                             = current.Year,
+                Month                            = current.Month,
+                MonthName                        = new DateTime(current.Year, current.Month, 1).ToString("MMMM yyyy"),
+                Total                            = current.TotalSpent,       // this is total SPENT for the month
+                TransactionCount                 = current.TransactionCount,
+                ChangeFromPreviousMonth          = change,
                 PercentageChangeFromPreviousMonth = changePct
             });
         }
 
-        monthlyBreakdown.Reverse();
+        // Reverse once deltas are computed — newest month appears first in the UI table
+        var monthlyBreakdown = Enumerable.Reverse(monthlyAscending).ToList();
 
+        // ── Average monthly spend uses the ascending list totals (order doesn't matter) ──
+        var averageMonthlySpend = monthlyAscending.Count > 0
+            ? Math.Round(monthlyAscending.Average(m => m.Total), 2)
+            : 0;
+
+        // ── Biggest single expense ────────────────────────────────────────────
         var biggestTransaction = expenseTransactions
             .OrderByDescending(t => Math.Abs(t.Amount))
             .FirstOrDefault();
 
         return new SpendingSummaryDto
         {
-            TotalSpent = totalSpent,
-            TotalReceived = totalReceived,
-            TotalTransactionVolume = totalTransactionVolume,
-            TotalTransactions = transactions.Count,
-            AverageTransactionAmount = expenseTransactions.Count > 0
+            TotalSpent              = totalSpent,
+            TotalReceived           = totalReceived,
+            TotalTransactionVolume  = totalTransactionVolume,
+            TotalTransactions       = transactions.Count,
+            AverageExpenseAmount    = expenseTransactions.Count > 0
                 ? Math.Round(totalSpent / expenseTransactions.Count, 2)
                 : 0,
-            AverageMonthlySpend = monthlyBreakdown.Count > 0
-                ? Math.Round(monthlyBreakdown.Average(m => m.Total), 2)
-                : 0,
+            AverageMonthlySpend     = averageMonthlySpend,
             HighestSpendingCategory = categoryBreakdown.Count > 0
                 ? categoryBreakdown.First().Category
                 : "N/A",
             BiggestTransaction = biggestTransaction is null ? null : new TransactionDto
             {
-                Id = biggestTransaction.Id,
-                Date = biggestTransaction.Date,
+                Id          = biggestTransaction.Id,
+                Date        = biggestTransaction.Date,
                 Description = biggestTransaction.Description,
-                Amount = Math.Abs(biggestTransaction.Amount),
-                Category = biggestTransaction.Category
+                Amount      = Math.Abs(biggestTransaction.Amount),
+                Category    = biggestTransaction.Category,
+                IsCredit    = false,
+                Type        = "Debit"
             },
             CategoryBreakdown = categoryBreakdown,
-            MonthlyBreakdown = monthlyBreakdown
+            MonthlyBreakdown  = monthlyBreakdown
         };
     }
 
-    private static bool IsSpendingAnalyticsTransaction(Transaction transaction)
-    {
-        if (transaction.IsCredit)
-            return false;
-
-        string category = transaction.Category?.Trim().ToLowerInvariant() ?? "";
-        string description = transaction.Description?.Trim().ToLowerInvariant() ?? "";
-
-        if (category.Contains("transfer"))
-            return false;
-
-        if (description.Contains("money sent") ||
-            description.Contains("self transfer") ||
-            description.Contains("transfer"))
-            return false;
-
-        return true;
-    }
+    // ── Private helpers ───────────────────────────────────────────────────────
 
     private static string MakeDuplicateKey(DateTime date, string description, decimal amount)
-    {
-        return $"{date.Date:yyyy-MM-dd}|{description}|{amount}";
-    }
+        => $"{date.Date:yyyy-MM-dd}|{description}|{amount}";
 
     private static string BuildSummaryMessage(int total, int saved, int duplicates, int skipped)
     {
@@ -322,13 +304,8 @@ public class TransactionService : ITransactionService
             return "All transactions in this file already exist. No new records added.";
 
         var msg = $"Processed {total} rows. Saved: {saved}";
-
-        if (duplicates > 0)
-            msg += $", Duplicates skipped: {duplicates}";
-
-        if (skipped > 0)
-            msg += $", Invalid rows skipped: {skipped}";
-
+        if (duplicates > 0) msg += $", Duplicates skipped: {duplicates}";
+        if (skipped > 0)    msg += $", Invalid rows skipped: {skipped}";
         return msg + ".";
     }
 }

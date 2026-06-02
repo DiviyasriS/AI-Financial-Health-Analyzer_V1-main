@@ -1,3 +1,13 @@
+using Backend.Models;
+
+public class ParsedFileResult
+{
+    public List<Transaction> Transactions { get; set; } = new();
+    public int TotalRowsFound { get; set; }
+    public int SkippedRows { get; set; }
+    public int DuplicateRows { get; set; }
+}
+
 public class FileProcessingResultDto
 {
     public int SavedCount { get; set; }

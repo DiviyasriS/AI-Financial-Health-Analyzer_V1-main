@@ -133,7 +133,7 @@ public class FinancialReportService : IReportService
                         AddKeyValue(table, "Total Received", FormatCurrency(summary.TotalReceived));
                         AddKeyValue(table, "Total Transaction Volume", FormatCurrency(summary.TotalTransactionVolume));
                         AddKeyValue(table, "Total Transactions", summary.TotalTransactions.ToString());
-                        AddKeyValue(table, "Average Expense Transaction", FormatCurrency(summary.AverageTransactionAmount));
+                        AddKeyValue(table, "Average Expense Transaction", FormatCurrency(summary.AverageExpenseAmount));
                         AddKeyValue(table, "Average Monthly Spend", FormatCurrency(summary.AverageMonthlySpend));
                         AddKeyValue(table, "Highest Spending Category", summary.HighestSpendingCategory);
                     });

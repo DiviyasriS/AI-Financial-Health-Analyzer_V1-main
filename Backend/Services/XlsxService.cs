@@ -1,14 +1,27 @@
 using OfficeOpenXml;
 using System.Globalization;
+using Backend.Models;
+using Microsoft.Extensions.Logging;
+
+// XlsxService parses a .xlsx/.xls workbook into Transaction objects.
+//
+// Expected column layout (header in row 1):
+//   Col A: Date        (required)
+//   Col B: Description (required)
+//   Col C: Amount      (required; negative = debit, positive = credit)
+//   Col D: Category    (optional; auto-predicted from description if blank)
+//   Col E: Type        (optional; "CR"/"DR" explicit override for unsigned amounts)
 
 public class XlsxService
 {
     private readonly ILogger<XlsxService> _logger;
+    private readonly CategoryPredictionService _categoryPredictor;
 
-    public XlsxService(ILogger<XlsxService> logger)
+    public XlsxService(ILogger<XlsxService> logger, CategoryPredictionService categoryPredictor)
     {
         ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-        _logger = logger;
+        _logger            = logger;
+        _categoryPredictor = categoryPredictor;
     }
 
     public Task<ParsedFileResult> ParseAsync(Stream fileStream, int userId)
@@ -33,12 +46,16 @@ public class XlsxService
             return Task.FromResult(result);
         }
 
+        // ── Detect optional Type column (col E or header-named) ──────────────
+        int typeColIndex = FindTypeColumnIndex(worksheet, colCount);
+
         for (int row = 2; row <= rowCount; row++)
         {
             ExcelRange dateCell        = worksheet.Cells[row, 1];
             ExcelRange descriptionCell = worksheet.Cells[row, 2];
             ExcelRange amountCell      = worksheet.Cells[row, 3];
             ExcelRange? categoryCell   = colCount >= 4 ? worksheet.Cells[row, 4] : null;
+            ExcelRange? typeCell       = typeColIndex > 0 ? worksheet.Cells[row, typeColIndex] : null;
 
             if (dateCell.Value == null && descriptionCell.Value == null && amountCell.Value == null)
                 continue;
@@ -61,28 +78,47 @@ public class XlsxService
                     continue;
                 }
 
-                if (!TryParseAmount(amountCell.Value, out decimal amount))
+                if (!TryParseAmount(amountCell.Value, out decimal rawAmount))
                 {
                     _logger.LogDebug("XLSX row {Row} for user {UserId} has invalid amount, skipping", row, userId);
                     result.SkippedRows++;
                     continue;
                 }
 
-                if (amount == 0)
+                if (rawAmount == 0)
                 {
                     result.SkippedRows++;
                     continue;
                 }
 
+                // ── Determine IsCredit ────────────────────────────────────────
+                bool isCredit = DetermineIsCredit(rawAmount, typeCell?.Value?.ToString());
+
+                decimal amount = Math.Abs(rawAmount);
+
+                // ── Category resolution ───────────────────────────────────────
                 string? category = categoryCell?.Value?.ToString()?.Trim();
-                if (string.IsNullOrWhiteSpace(category))
-                    category = "Uncategorized";
+
+                if (string.IsNullOrWhiteSpace(category) ||
+                    string.Equals(category, "Uncategorized", StringComparison.OrdinalIgnoreCase))
+                {
+                    category = _categoryPredictor.Predict(description);
+                }
+
+                // Credits with no specific category → Income
+                if (isCredit &&
+                    (string.Equals(category, "Uncategorized", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(category, "Others", StringComparison.OrdinalIgnoreCase)))
+                {
+                    category = "Income";
+                }
 
                 result.Transactions.Add(new Transaction
                 {
                     Date        = date,
                     Description = description,
                     Amount      = amount,
+                    IsCredit    = isCredit,
                     Category    = category,
                     UserId      = userId
                 });
@@ -94,65 +130,98 @@ public class XlsxService
             }
         }
 
-        _logger.LogInformation("XLSX parse complete for user {UserId}: {Total} rows, {Valid} valid, {Skipped} skipped",
-            userId, result.TotalRowsFound, result.Transactions.Count, result.SkippedRows);
+        _logger.LogInformation(
+            "XLSX parse complete for user {UserId}: {Total} rows, {Valid} valid ({Credits} credits, {Debits} debits), {Skipped} skipped",
+            userId,
+            result.TotalRowsFound,
+            result.Transactions.Count,
+            result.Transactions.Count(t => t.IsCredit),
+            result.Transactions.Count(t => !t.IsCredit),
+            result.SkippedRows);
 
         return Task.FromResult(result);
     }
 
+    // ── IsCredit determination ────────────────────────────────────────────────
+    // Priority 1: explicit type column string
+    // Priority 2: sign of the raw amount
+    private static bool DetermineIsCredit(decimal rawAmount, string? typeValue)
+    {
+        if (!string.IsNullOrWhiteSpace(typeValue))
+        {
+            string t = typeValue.Trim().ToLowerInvariant();
+            if (t is "credit" or "cr" or "in" or "received" or "true" or "1")
+                return true;
+            if (t is "debit" or "dr" or "out" or "paid" or "sent" or "false" or "0")
+                return false;
+        }
+
+        return rawAmount > 0; // positive = credit, negative = debit
+    }
+
+    // ── Type column detection ─────────────────────────────────────────────────
+    private static int FindTypeColumnIndex(ExcelWorksheet worksheet, int colCount)
+    {
+        if (colCount < 5) return -1;
+
+        for (int col = 1; col <= colCount; col++)
+        {
+            string? header = worksheet.Cells[1, col].Value?.ToString()?.Trim().ToLowerInvariant();
+            if (header is "type" or "iscredit" or "credit/debit" or "dr/cr" or "cr/dr"
+                       or "transaction type" or "txn type" or "nature")
+                return col;
+        }
+
+        return -1;
+    }
+
+    // ── Date parsing ──────────────────────────────────────────────────────────
     private static bool TryParseDate(object? cellValue, out DateTime date)
-{
-    date = default;
+    {
+        date = default;
 
-    if (cellValue is null)
+        if (cellValue is null)
+            return false;
+
+        if (cellValue is double oaDate)
+        {
+            date = DateTime.SpecifyKind(DateTime.FromOADate(oaDate).Date, DateTimeKind.Utc);
+            return true;
+        }
+
+        if (cellValue is DateTime dt)
+        {
+            date = DateTime.SpecifyKind(dt.Date, DateTimeKind.Utc);
+            return true;
+        }
+
+        if (DateTime.TryParse(
+            cellValue.ToString()?.Trim(),
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeLocal,
+            out DateTime parsed))
+        {
+            date = DateTime.SpecifyKind(parsed.Date, DateTimeKind.Utc);
+            return true;
+        }
+
         return false;
-
-    // Excel stores dates internally as OLE Automation numbers
-    if (cellValue is double oaDate)
-    {
-        date = DateTime.SpecifyKind(
-            DateTime.FromOADate(oaDate).Date,
-            DateTimeKind.Utc);
-
-        return true;
     }
 
-    // Already parsed as DateTime by EPPlus
-    if (cellValue is DateTime dt)
-    {
-        date = DateTime.SpecifyKind(
-            dt.Date,
-            DateTimeKind.Utc);
-
-        return true;
-    }
-
-    // String parsing fallback
-    if (DateTime.TryParse(
-        cellValue.ToString()?.Trim(),
-        CultureInfo.InvariantCulture,
-        DateTimeStyles.AssumeLocal,
-        out DateTime parsed))
-    {
-        date = DateTime.SpecifyKind(
-            parsed.Date,
-            DateTimeKind.Utc);
-
-        return true;
-    }
-
-    return false;
-}
+    // ── Amount parsing ────────────────────────────────────────────────────────
     private static bool TryParseAmount(object? cellValue, out decimal amount)
     {
         amount = 0;
         if (cellValue == null) return false;
 
-        if (cellValue is double d) { amount = (decimal)d; return true; }
-        if (cellValue is int i)    { amount = i; return true; }
-        if (cellValue is decimal dec) { amount = dec; return true; }
+        if (cellValue is double d)   { amount = (decimal)d; return true; }
+        if (cellValue is int i)      { amount = i;          return true; }
+        if (cellValue is decimal dec){ amount = dec;        return true; }
 
-        return decimal.TryParse(cellValue.ToString()?.Trim(), NumberStyles.Any,
-            CultureInfo.InvariantCulture, out amount);
+        return decimal.TryParse(
+            cellValue.ToString()?.Trim(),
+            NumberStyles.Any,
+            CultureInfo.InvariantCulture,
+            out amount);
     }
 }
