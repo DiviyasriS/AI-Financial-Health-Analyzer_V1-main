@@ -8,7 +8,6 @@ public class FinancialReportService : IReportService
     private readonly ITransactionService _transactionService;
     private readonly ITransactionRepository _transactionRepository;
     private readonly IRiskPredictionRepository _riskRepository;
-    private readonly IInsightRepository _insightRepository;
     private readonly RiskPredictionService _riskPredictionService;
     private readonly InsightsService _insightsService;
     private readonly ILogger<FinancialReportService> _logger;
@@ -25,7 +24,6 @@ public class FinancialReportService : IReportService
         _transactionService = transactionService;
         _transactionRepository = transactionRepository;
         _riskRepository = riskRepository;
-        _insightRepository = insightRepository;
         _riskPredictionService = riskPredictionService;
         _insightsService = insightsService;
         _logger = logger;
@@ -38,49 +36,67 @@ public class FinancialReportService : IReportService
             SpendingSummaryDto summary = await _transactionService.GetSummaryAsync(userId);
             List<Transaction> transactions = await _transactionRepository.GetByUserIdAsync(userId);
 
-            RiskPrediction? risk = await _riskRepository.GetLatestByUserIdAsync(userId);
-
-            if (risk is null && transactions.Count > 0)
+            if (transactions.Count == 0)
             {
-                UserRiskFeatures features = FinancialFeatureExtractor.Extract(transactions);
-                (string riskLevel, float riskScore) = _riskPredictionService.Predict(features);
-
-                risk = new RiskPrediction
-                {
-                    UserId = userId,
-                    RiskLevel = riskLevel,
-                    RiskScore = riskScore,
-                    MonthlyAvgSpend = summary.AverageMonthlySpend,
-                    TotalTransactions = summary.TotalTransactions,
-                    CategoryCount = summary.CategoryBreakdown.Count,
-                    PredictedAt = DateTime.UtcNow
-                };
-
-                await _riskRepository.SaveAsync(risk);
-            }
-
-            List<Insight> insights = await _insightRepository.GetByUserIdAsync(userId);
-
-            if (insights.Count == 0 && transactions.Count > 0)
-            {
-                UserRiskFeatures features = FinancialFeatureExtractor.Extract(transactions);
-
-                insights = await _insightsService.GenerateAndSaveAsync(
-                    userId,
-                    features,
+                _logger.LogInformation("Empty PDF report generated for UserId={UserId}", userId);
+                return BuildPdf(
                     summary,
-                    risk?.RiskLevel ?? "Low");
+                    null,
+                    new RiskAssessmentResult
+                    {
+                        RiskLevel = "Unknown",
+                        RiskScorePercent = 0,
+                        Summary = "No transactions found. Upload a statement to generate a financial health report.",
+                        RiskFactors = new List<string> { "No transaction data is available for analysis." },
+                        PositiveSignals = new List<string>()
+                    },
+                    new List<Insight>(),
+                    new List<Transaction>());
             }
 
-            List<Transaction> topTransactions = transactions
-                .Where(t => !t.IsCredit)
+            UserRiskFeatures features = FinancialFeatureExtractor.Extract(transactions);
+            RiskAssessmentResult assessment = RiskLabelGenerator.GenerateAssessment(features);
+            (string riskLevel, float riskScore) = _riskPredictionService.Predict(features);
+
+            RiskPrediction risk = new()
+            {
+                UserId = userId,
+                RiskLevel = riskLevel,
+                RiskScore = riskScore,
+                MonthlyAvgSpend = summary.AverageMonthlySpend,
+                TotalTransactions = summary.TotalTransactions,
+                CategoryCount = summary.CategoryBreakdown.Count,
+                TopCategory = features.TopCategory,
+                TopCategoryPercentage = (decimal)features.TopCategoryPercentage,
+                FoodSpendPercentage = (decimal)features.FoodSpendPercentage,
+                EntertainmentSpendPercentage = (decimal)features.EntertainmentSpendPercentage,
+                MoMSpendChangePercentage = (decimal)features.MoMSpendChangePercentage,
+                PredictedAt = DateTime.UtcNow
+            };
+
+            await _riskRepository.SaveAsync(risk);
+
+            List<Insight> insights = await _insightsService.GenerateAndSaveAsync(
+                userId,
+                features,
+                summary,
+                riskLevel);
+
+            List<Transaction> topSpendingTransactions = transactions
+                .Where(TransactionFilters.IsSpendingAnalytics)
                 .OrderByDescending(t => Math.Abs(t.Amount))
                 .Take(10)
                 .ToList();
 
-            byte[] pdfBytes = BuildPdf(summary, risk, insights, topTransactions);
+            byte[] pdfBytes = BuildPdf(summary, risk, assessment, insights, topSpendingTransactions);
 
-            _logger.LogInformation("PDF report generated for UserId={UserId}", userId);
+            _logger.LogInformation(
+                "PDF report generated for UserId={UserId}. RiskLevel={RiskLevel}, RiskScore={RiskScore:P1}, Transactions={TransactionCount}",
+                userId,
+                risk.RiskLevel,
+                risk.RiskScore,
+                transactions.Count);
+
             return pdfBytes;
         }
         catch (Exception ex)
@@ -93,148 +109,177 @@ public class FinancialReportService : IReportService
     private static byte[] BuildPdf(
         SpendingSummaryDto summary,
         RiskPrediction? risk,
+        RiskAssessmentResult assessment,
         List<Insight> insights,
-        List<Transaction> topTransactions)
+        List<Transaction> topSpendingTransactions)
     {
         return Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
-                page.Margin(30);
-                page.DefaultTextStyle(x => x.FontSize(10));
+                page.Margin(28);
+                page.DefaultTextStyle(x => x.FontSize(9));
 
                 page.Header().Column(col =>
                 {
                     col.Item().Text("AI Financial Health Analyzer Report")
                         .FontSize(20)
-                        .Bold();
+                        .Bold()
+                        .FontColor(Colors.Blue.Darken3);
 
-                    col.Item().Text($"Generated Date: {DateTime.Now:dd MMM yyyy hh:mm tt}")
+                    col.Item().Text($"Generated: {DateTime.Now:dd MMM yyyy, hh:mm tt}")
                         .FontSize(9)
                         .FontColor(Colors.Grey.Darken2);
                 });
 
-                page.Content().PaddingVertical(15).Column(col =>
+                page.Content().PaddingVertical(12).Column(col =>
                 {
-                    col.Spacing(14);
+                    col.Spacing(12);
 
-                    col.Item().Element(SectionTitle).Text("Summary").Bold();
+                    col.Item().Element(InfoBox).Text(
+                        "Report definitions: Total Spent = all debit/outgoing transactions. Total Received = all credit/incoming transactions. Category analysis, risk score, insights, and top spending exclude credits and transfer/self-transfer transactions so the financial health story is not distorted.");
 
+                    col.Item().Element(SectionTitle).Text("1. Executive Summary").Bold();
                     col.Item().Table(table =>
                     {
                         table.ColumnsDefinition(columns =>
                         {
                             columns.RelativeColumn();
                             columns.RelativeColumn();
+                            columns.RelativeColumn();
                         });
 
-                        AddKeyValue(table, "Total Spent", FormatCurrency(summary.TotalSpent));
-                        AddKeyValue(table, "Total Received", FormatCurrency(summary.TotalReceived));
-                        AddKeyValue(table, "Total Transaction Volume", FormatCurrency(summary.TotalTransactionVolume));
-                        AddKeyValue(table, "Total Transactions", summary.TotalTransactions.ToString());
-                        AddKeyValue(table, "Average Expense Transaction", FormatCurrency(summary.AverageExpenseAmount));
-                        AddKeyValue(table, "Average Monthly Spend", FormatCurrency(summary.AverageMonthlySpend));
-                        AddKeyValue(table, "Highest Spending Category", summary.HighestSpendingCategory);
+                        AddMetric(table, "Total Spent", FormatCurrency(summary.TotalSpent));
+                        AddMetric(table, "Total Received", FormatCurrency(summary.TotalReceived));
+                        AddMetric(table, "Transaction Volume", FormatCurrency(summary.TotalTransactionVolume));
+                        AddMetric(table, "Total Transactions", summary.TotalTransactions.ToString());
+                        AddMetric(table, "Average Expense", FormatCurrency(summary.AverageExpenseAmount));
+                        AddMetric(table, "Avg Monthly Spend", FormatCurrency(summary.AverageMonthlySpend));
                     });
 
-                    col.Item().Element(SectionTitle).Text("Risk Score").Bold();
-
-                    col.Item().Text(risk is null
-                        ? "Risk Score: Not available"
-                        : $"Risk Level: {risk.RiskLevel} | Risk Score: {(risk.RiskScore * 100):0}% | Predicted At: {risk.PredictedAt:dd MMM yyyy}");
-
-                    col.Item().Element(SectionTitle).Text("Category Breakdown").Bold();
-
+                    col.Item().Element(SectionTitle).Text("2. Risk Score and Explanation").Bold();
                     col.Item().Table(table =>
                     {
                         table.ColumnsDefinition(columns =>
                         {
-                            columns.RelativeColumn(4);
-                            columns.RelativeColumn(2);
-                            columns.RelativeColumn(2);
-                            columns.RelativeColumn(2);
-                        });
-
-                        AddHeader(
-                            table,
-                            "Category",
-                            "Total Spent",
-                            "Transactions",
-                            "Percentage"
-                        );
-
-                        foreach (CategorySummaryDto item in summary.CategoryBreakdown)
-                        {
-                            table.Cell().Element(Cell).Text(item.Category);
-                            table.Cell().Element(Cell).Text(FormatCurrency(item.Total));
-                            table.Cell().Element(Cell).Text(item.TransactionCount.ToString());
-                            table.Cell().Element(Cell).Text($"{item.PercentageOfTotal:0.##}%");
-                        }
-                    });
-
-                    col.Item().Element(SectionTitle).Text("Monthly Breakdown").Bold();
-
-                    col.Item().Table(table =>
-                    {
-                        table.ColumnsDefinition(columns =>
-                        {
-                            columns.RelativeColumn(3);
-                            columns.RelativeColumn(2);
+                            columns.RelativeColumn();
+                            columns.RelativeColumn();
                             columns.RelativeColumn(2);
                         });
 
-                        AddHeader(
-                            table,
-                            "Month",
-                            "Total Spent",
-                            "Transactions"
-                        );
-
-                        foreach (MonthlySummaryDto item in summary.MonthlyBreakdown)
-                        {
-                            table.Cell().Element(Cell).Text(item.MonthName);
-                            table.Cell().Element(Cell).Text(FormatCurrency(item.Total));
-                            table.Cell().Element(Cell).Text(item.TransactionCount.ToString());
-                        }
+                        AddHeader(table, "Risk Level", "Risk Score", "Meaning");
+                        table.Cell().Element(Cell).Text(risk?.RiskLevel ?? "Unknown").Bold();
+                        table.Cell().Element(Cell).Text(risk is null ? "0%" : $"{Math.Clamp(risk.RiskScore, 0f, 1f) * 100:0}%").Bold();
+                        table.Cell().Element(Cell).Text(assessment.Summary);
                     });
 
-                    col.Item().Element(SectionTitle).Text("AI Insights").Bold();
+                    AddBullets(col, "Risk Factors", assessment.RiskFactors);
+                    AddBullets(col, "Positive Signals", assessment.PositiveSignals);
 
-                    if (insights.Count == 0)
+                    col.Item().Element(SectionTitle).Text("3. Spending Category Breakdown").Bold();
+                    if (summary.CategoryBreakdown.Count == 0)
                     {
-                        col.Item().Text("No insights available.");
+                        col.Item().Text("No category spending data is available after excluding credits and transfers.");
                     }
                     else
                     {
-                        foreach (Insight insight in insights.OrderBy(i => i.Priority))
+                        col.Item().Table(table =>
                         {
-                            col.Item().Text($"{insight.Title}: {insight.Message}");
+                            table.ColumnsDefinition(columns =>
+                            {
+                                columns.RelativeColumn(4);
+                                columns.RelativeColumn(2);
+                                columns.RelativeColumn(2);
+                                columns.RelativeColumn(2);
+                            });
+
+                            AddHeader(table, "Category", "Spent", "Txns", "% of Spending");
+
+                            foreach (CategorySummaryDto item in summary.CategoryBreakdown.Take(12))
+                            {
+                                table.Cell().Element(Cell).Text(item.Category);
+                                table.Cell().Element(Cell).Text(FormatCurrency(item.Total));
+                                table.Cell().Element(Cell).Text(item.TransactionCount.ToString());
+                                table.Cell().Element(Cell).Text($"{item.PercentageOfTotal:0.##}%");
+                            }
+                        });
+                    }
+
+                    col.Item().Element(SectionTitle).Text("4. Monthly Expense Breakdown").Bold();
+                    if (summary.MonthlyBreakdown.Count == 0)
+                    {
+                        col.Item().Text("No debit transactions are available for monthly expense analysis.");
+                    }
+                    else
+                    {
+                        col.Item().Table(table =>
+                        {
+                            table.ColumnsDefinition(columns =>
+                            {
+                                columns.RelativeColumn(3);
+                                columns.RelativeColumn(2);
+                                columns.RelativeColumn(2);
+                                columns.RelativeColumn(2);
+                            });
+
+                            AddHeader(table, "Month", "Total Spent", "Txns", "Change");
+
+                            foreach (MonthlySummaryDto item in summary.MonthlyBreakdown)
+                            {
+                                table.Cell().Element(Cell).Text(item.MonthName);
+                                table.Cell().Element(Cell).Text(FormatCurrency(item.Total));
+                                table.Cell().Element(Cell).Text(item.TransactionCount.ToString());
+                                table.Cell().Element(Cell).Text(FormatChange(item.ChangeFromPreviousMonth, item.PercentageChangeFromPreviousMonth));
+                            }
+                        });
+                    }
+
+                    col.Item().Element(SectionTitle).Text("5. AI Insights").Bold();
+                    if (insights.Count == 0)
+                    {
+                        col.Item().Text("No insights available yet.");
+                    }
+                    else
+                    {
+                        foreach (Insight insight in insights.OrderByDescending(i => i.Priority).Take(8))
+                        {
+                            col.Item().Element(InsightBox).Column(box =>
+                            {
+                                box.Item().Text($"{insight.Title}  ·  Priority {insight.Priority}").Bold();
+                                box.Item().Text(insight.Message);
+                            });
                         }
                     }
 
-                    col.Item().Element(SectionTitle).Text("Top Transactions").Bold();
-
-                    col.Item().Table(table =>
+                    col.Item().Element(SectionTitle).Text("6. Top Spending Transactions").Bold();
+                    if (topSpendingTransactions.Count == 0)
                     {
-                        table.ColumnsDefinition(columns =>
+                        col.Item().Text("No spending transactions found after excluding credits and transfers.");
+                    }
+                    else
+                    {
+                        col.Item().Table(table =>
                         {
-                            columns.RelativeColumn();
-                            columns.RelativeColumn(3);
-                            columns.RelativeColumn();
-                            columns.RelativeColumn();
+                            table.ColumnsDefinition(columns =>
+                            {
+                                columns.RelativeColumn(2);
+                                columns.RelativeColumn(5);
+                                columns.RelativeColumn(3);
+                                columns.RelativeColumn(2);
+                            });
+
+                            AddHeader(table, "Date", "Description", "Category", "Amount");
+
+                            foreach (Transaction tx in topSpendingTransactions)
+                            {
+                                table.Cell().Element(Cell).Text(tx.Date.ToString("dd MMM yyyy"));
+                                table.Cell().Element(Cell).Text(tx.Description);
+                                table.Cell().Element(Cell).Text(string.IsNullOrWhiteSpace(tx.Category) ? "Uncategorized" : tx.Category);
+                                table.Cell().Element(Cell).Text(FormatCurrency(Math.Abs(tx.Amount)));
+                            }
                         });
-
-                        AddHeader(table, "Date", "Description", "Category", "Amount");
-
-                        foreach (Transaction tx in topTransactions)
-                        {
-                            table.Cell().Element(Cell).Text(tx.Date.ToString("dd MMM yyyy"));
-                            table.Cell().Element(Cell).Text(tx.Description);
-                            table.Cell().Element(Cell).Text(tx.Category);
-                            table.Cell().Element(Cell).Text(FormatCurrency(Math.Abs(tx.Amount)));
-                        }
-                    });
+                    }
                 });
 
                 page.Footer().AlignCenter().Text(text =>
@@ -248,13 +293,25 @@ public class FinancialReportService : IReportService
         }).GeneratePdf();
     }
 
+    private static void AddBullets(ColumnDescriptor col, string title, List<string> items)
+    {
+        if (items.Count == 0)
+            return;
+
+        col.Item().Text(title).Bold();
+        foreach (string item in items.Take(5))
+        {
+            col.Item().PaddingLeft(8).Text($"• {item}");
+        }
+    }
+
     private static IContainer SectionTitle(IContainer container)
     {
         return container
-            .PaddingTop(5)
+            .PaddingTop(4)
             .PaddingBottom(4)
             .BorderBottom(1)
-            .BorderColor(Colors.Grey.Lighten1);
+            .BorderColor(Colors.Blue.Lighten2);
     }
 
     private static IContainer Cell(IContainer container)
@@ -274,6 +331,32 @@ public class FinancialReportService : IReportService
             .PaddingHorizontal(3);
     }
 
+    private static IContainer MetricCell(IContainer container)
+    {
+        return container
+            .Border(1)
+            .BorderColor(Colors.Grey.Lighten2)
+            .Padding(6);
+    }
+
+    private static IContainer InfoBox(IContainer container)
+    {
+        return container
+            .Background(Colors.Blue.Lighten5)
+            .Border(1)
+            .BorderColor(Colors.Blue.Lighten3)
+            .Padding(8);
+    }
+
+    private static IContainer InsightBox(IContainer container)
+    {
+        return container
+            .Background(Colors.Grey.Lighten5)
+            .BorderLeft(3)
+            .BorderColor(Colors.Blue.Darken2)
+            .Padding(7);
+    }
+
     private static void AddHeader(TableDescriptor table, params string[] headers)
     {
         foreach (string header in headers)
@@ -282,14 +365,32 @@ public class FinancialReportService : IReportService
         }
     }
 
-    private static void AddKeyValue(TableDescriptor table, string key, string value)
+    private static void AddMetric(TableDescriptor table, string key, string value)
     {
-        table.Cell().Element(Cell).Text(key).Bold();
-        table.Cell().Element(Cell).Text(value);
+        table.Cell().Element(MetricCell).Column(col =>
+        {
+            col.Item().Text(key).FontColor(Colors.Grey.Darken2);
+            col.Item().Text(value).FontSize(12).Bold();
+        });
     }
 
     private static string FormatCurrency(decimal value)
     {
         return $"₹{Math.Abs(value):N2}";
+    }
+
+    private static string FormatChange(decimal? value, decimal? percentage)
+    {
+        if (value is null)
+            return "—";
+
+        string amountPrefix = value > 0 ? "+" : value < 0 ? "-" : string.Empty;
+        string amountText = $"{amountPrefix}{FormatCurrency(Math.Abs(value.Value))}";
+
+        if (percentage is null)
+            return amountText;
+
+        string pctPrefix = percentage > 0 ? "+" : string.Empty;
+        return $"{amountText} ({pctPrefix}{percentage:0.#}%)";
     }
 }
