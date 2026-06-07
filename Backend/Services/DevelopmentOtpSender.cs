@@ -9,7 +9,7 @@ public class DevelopmentOtpSender : IOtpSender
 
     public Task SendOtpAsync(string mobileNumber, string otp)
     {
-        _logger.LogWarning("Development OTP for {MobileNumber}: {Otp}. Replace DevelopmentOtpSender with SMS provider in production.", mobileNumber, otp);
+        _logger.LogWarning("Development OTP generated for {mobileNumber}. Replace DevelopmentOtpSender with SMS provider in production.", mobileNumber);
         return Task.CompletedTask;
     }
 }
