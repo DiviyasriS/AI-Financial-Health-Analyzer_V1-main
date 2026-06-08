@@ -15,6 +15,8 @@ public class DashboardController : ControllerBase
     private readonly InsightsService _insightsService;
     private readonly ILogger<DashboardController> _logger;
 
+    private readonly AlertService _alertService;
+
     public DashboardController(
         ITransactionService transactionService,
         ITransactionRepository transactionRepository,
@@ -22,6 +24,7 @@ public class DashboardController : ControllerBase
         IRiskPredictionRepository riskRepo,
         InsightsService insightsService,
         IInsightRepository insightRepo,
+        AlertService alertService,
         ILogger<DashboardController> logger)
     {
         _transactionService = transactionService;
@@ -30,6 +33,7 @@ public class DashboardController : ControllerBase
         _riskRepo = riskRepo;
         _insightsService = insightsService;
         _logger = logger;
+        _alertService = alertService;
     }
 
     [HttpGet("summary")]
@@ -65,7 +69,10 @@ public class DashboardController : ControllerBase
         _logger.LogInformation("Risk prediction requested for UserId={UserId}", userId);
 
         RiskDto dto = await BuildAndPersistRiskDtoAsync(userId);
-        return Ok(dto);
+
+await _alertService.SendRiskAlertAsync(userId, dto);
+
+return Ok(dto);
     }
 
     [HttpGet("insights")]
@@ -164,4 +171,6 @@ public class DashboardController : ControllerBase
                     ?? User.FindFirst("userId");
         return claim is not null && int.TryParse(claim.Value, out userId);
     }
+
+    
 }

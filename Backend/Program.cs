@@ -154,6 +154,14 @@ if (string.IsNullOrWhiteSpace(jwtKey))
 
     builder.Services.AddSingleton<RiskPredictionService>();
     builder.Services.AddScoped<RiskModelTrainer>();
+
+    builder.Services.Configure<SmtpSettings>(
+    builder.Configuration.GetSection("Smtp"));
+
+builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+builder.Services.AddScoped<AlertService>();
+
+
     if (!builder.Environment.IsEnvironment("Testing"))
 {
     builder.Services.AddHostedService<ModelTrainingHostedService>();

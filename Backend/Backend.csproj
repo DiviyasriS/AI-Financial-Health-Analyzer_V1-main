@@ -1,15 +1,17 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>7ad66745-5f96-42d8-84d2-be43bad327dd</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
      <PackageReference Include="BCrypt.Net-Next" Version="4.1.0" />
     <PackageReference Include="Google.Apis.Auth" Version="1.68.0" />
+    <PackageReference Include="MailKit" Version="4.17.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
    
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.0" />
