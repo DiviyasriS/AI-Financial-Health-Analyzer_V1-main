@@ -31,8 +31,7 @@ public class AuthIntegrationTests
             .Setup(s => s.RegisterAsync(It.IsAny<RegisterDto>()))
             .ReturnsAsync(new AuthResponseDto
             {
-                UserId = 1,
-                Email = "test@example.com",
+               
                 Token = "fake-jwt-token"
             });
 
@@ -68,8 +67,7 @@ public class AuthIntegrationTests
             .Setup(s => s.LoginAsync(It.IsAny<LoginDto>()))
             .ReturnsAsync(new AuthResponseDto
             {
-                UserId = 1,
-                Email = "test@example.com",
+                
                 Token = "fake-jwt-token"
             });
 
@@ -120,9 +118,6 @@ public class AuthIntegrationTests
             .Setup(s => s.VerifyMobileOtpAsync(It.IsAny<VerifyOtpDto>()))
             .ReturnsAsync(new AuthResponseDto
             {
-                UserId = 1,
-                Email = "mobile-user@example.com",
-                MobileNumber = "+919876543210",
                 Token = "fake-jwt-token"
             });
 

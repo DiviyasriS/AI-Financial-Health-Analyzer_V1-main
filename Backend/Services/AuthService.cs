@@ -323,9 +323,7 @@ private static UserProfileDto BuildUserProfile(User user) => new()
     private AuthResponseDto BuildAuthResponse(User user) => new()
     {
         Token = GenerateJwtToken(user),
-        Email = user.Email,
-        MobileNumber = user.MobileNumber,
-        UserId = user.Id
+        
     };
 
     private string GenerateJwtToken(User user)
@@ -339,14 +337,9 @@ private static UserProfileDto BuildUserProfile(User user) => new()
         List<Claim> claims = new()
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new Claim(ClaimTypes.Email, user.Email),
             new Claim("userId", user.Id.ToString())
         };
 
-        if (!string.IsNullOrWhiteSpace(user.MobileNumber))
-        {
-            claims.Add(new Claim(ClaimTypes.MobilePhone, user.MobileNumber));
-        }
 
         JwtSecurityToken token = new(
             issuer: _configuration["Jwt:Issuer"],

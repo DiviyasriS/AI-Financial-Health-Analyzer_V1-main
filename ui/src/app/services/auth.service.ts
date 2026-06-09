@@ -6,9 +6,7 @@ import { environment } from '../../environments/environment';
 
 export interface AuthResponseDto {
   token: string;
-  email: string;
-  mobileNumber?: string | null;
-  userId: number;
+  
 }
 
 export interface ApiResponse<T> {
@@ -87,7 +85,7 @@ export class AuthService {
 
   logout(): void {
     localStorage.removeItem(this.TOKEN_KEY);
-    localStorage.removeItem(this.USER_KEY);
+    
   }
 
   isLoggedIn(): boolean {
@@ -98,10 +96,10 @@ export class AuthService {
     return localStorage.getItem(this.TOKEN_KEY);
   }
 
-  getCurrentUser(): AuthResponseDto | null {
-    const stored = localStorage.getItem(this.USER_KEY);
-    return stored ? (JSON.parse(stored) as AuthResponseDto) : null;
+  getCurrentUser(): null{
+    return null;
   }
+  
 
 
   getProfile(): Observable<UserProfileDto> {
@@ -163,6 +161,6 @@ changePassword(data: ChangePasswordRequest): Observable<ApiResponse<object>> {
 
   private saveSession(data: AuthResponseDto): void {
     localStorage.setItem(this.TOKEN_KEY, data.token);
-    localStorage.setItem(this.USER_KEY, JSON.stringify(data));
+
   }
 }

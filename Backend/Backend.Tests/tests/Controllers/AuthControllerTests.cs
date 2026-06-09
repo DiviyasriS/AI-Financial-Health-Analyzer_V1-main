@@ -36,13 +36,11 @@ public class AuthControllerTests
     }
 
     [Test]
-    public async Task Register_WhenSuccess_ReturnsOk()
+    public async Task Register_WhenSuccess_ReturnsOk_WithOnlyToken()
     {
         var response = new AuthResponseDto
         {
-            Token = "jwt-token",
-            Email = "user@example.com",
-            UserId = 1
+            Token = "jwt-token"
         };
 
         _authServiceMock
@@ -55,7 +53,21 @@ public class AuthControllerTests
             Password = "Password@123"
         });
 
-        result.Should().BeOfType<OkObjectResult>();
+        OkObjectResult okResult = result.Should()
+            .BeOfType<OkObjectResult>()
+            .Subject;
+
+        var apiResponse = okResult.Value.Should()
+            .BeOfType<ApiResponse<AuthResponseDto>>()
+            .Subject;
+
+        apiResponse.Success.Should().BeTrue();
+        apiResponse.Data.Should().NotBeNull();
+        apiResponse.Data!.Token.Should().Be("jwt-token");
+
+        typeof(AuthResponseDto).GetProperty("Email").Should().BeNull();
+        typeof(AuthResponseDto).GetProperty("UserId").Should().BeNull();
+        typeof(AuthResponseDto).GetProperty("MobileNumber").Should().BeNull();
     }
 
     [Test]
@@ -75,13 +87,11 @@ public class AuthControllerTests
     }
 
     [Test]
-    public async Task Login_WhenValidCredentials_ReturnsOk()
+    public async Task Login_WhenValidCredentials_ReturnsOk_WithOnlyToken()
     {
         var response = new AuthResponseDto
         {
-            Token = "jwt-token",
-            Email = "user@example.com",
-            UserId = 1
+            Token = "jwt-token"
         };
 
         _authServiceMock
@@ -94,7 +104,21 @@ public class AuthControllerTests
             Password = "Password@123"
         });
 
-        result.Should().BeOfType<OkObjectResult>();
+        OkObjectResult okResult = result.Should()
+            .BeOfType<OkObjectResult>()
+            .Subject;
+
+        var apiResponse = okResult.Value.Should()
+            .BeOfType<ApiResponse<AuthResponseDto>>()
+            .Subject;
+
+        apiResponse.Success.Should().BeTrue();
+        apiResponse.Data.Should().NotBeNull();
+        apiResponse.Data!.Token.Should().Be("jwt-token");
+
+        typeof(AuthResponseDto).GetProperty("Email").Should().BeNull();
+        typeof(AuthResponseDto).GetProperty("UserId").Should().BeNull();
+        typeof(AuthResponseDto).GetProperty("MobileNumber").Should().BeNull();
     }
 
     [Test]
@@ -129,14 +153,11 @@ public class AuthControllerTests
     }
 
     [Test]
-    public async Task VerifyOtp_WhenValidOtp_ReturnsOk()
+    public async Task VerifyOtp_WhenValidOtp_ReturnsOk_WithOnlyToken()
     {
         var response = new AuthResponseDto
         {
-            Token = "otp-token",
-            Email = "mobile-919876543210@local.auth",
-            MobileNumber = "+919876543210",
-            UserId = 1
+            Token = "otp-token"
         };
 
         _authServiceMock
@@ -149,6 +170,20 @@ public class AuthControllerTests
             Otp = "123456"
         });
 
-        result.Should().BeOfType<OkObjectResult>();
+        OkObjectResult okResult = result.Should()
+            .BeOfType<OkObjectResult>()
+            .Subject;
+
+        var apiResponse = okResult.Value.Should()
+            .BeOfType<ApiResponse<AuthResponseDto>>()
+            .Subject;
+
+        apiResponse.Success.Should().BeTrue();
+        apiResponse.Data.Should().NotBeNull();
+        apiResponse.Data!.Token.Should().Be("otp-token");
+
+        typeof(AuthResponseDto).GetProperty("Email").Should().BeNull();
+        typeof(AuthResponseDto).GetProperty("UserId").Should().BeNull();
+        typeof(AuthResponseDto).GetProperty("MobileNumber").Should().BeNull();
     }
 }

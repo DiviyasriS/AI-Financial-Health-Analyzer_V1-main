@@ -110,11 +110,9 @@ public class AuthServiceTests
             MobileNumber = "9876543210"
         });
 
-        result.Should().NotBeNull();
-        result!.Token.Should().NotBeNullOrWhiteSpace();
-        result.Email.Should().Be("test@example.com");
-        result.MobileNumber.Should().Be("+919876543210");
-        result.UserId.Should().Be(1);
+        typeof(AuthResponseDto).GetProperty("Email").Should().BeNull();
+typeof(AuthResponseDto).GetProperty("UserId").Should().BeNull();
+typeof(AuthResponseDto).GetProperty("MobileNumber").Should().BeNull();
     }
 
     [Test]
@@ -178,7 +176,7 @@ public class AuthServiceTests
 
         result.Should().NotBeNull();
         result!.Token.Should().NotBeNullOrWhiteSpace();
-        result.Email.Should().Be("test@example.com");
+        
 
         _userRepositoryMock.Verify(r => r.UpdateAsync(user), Times.Once);
     }
@@ -285,8 +283,7 @@ public class AuthServiceTests
 
         result.Should().NotBeNull();
         result!.Token.Should().NotBeNullOrWhiteSpace();
-        result.UserId.Should().Be(10);
-        result.MobileNumber.Should().Be("+919876543210");
+        
 
         otpRequest.UsedAtUtc.Should().NotBeNull();
         _otpRepositoryMock.Verify(r => r.UpdateAsync(otpRequest), Times.Once);

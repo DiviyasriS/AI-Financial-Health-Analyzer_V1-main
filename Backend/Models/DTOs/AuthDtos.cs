@@ -51,9 +51,6 @@ public class VerifyOtpDto
 public class AuthResponseDto
 {
     public string Token { get; set; } = string.Empty;
-    public string Email { get; set; } = string.Empty;
-    public string? MobileNumber { get; set; }
-    public int UserId { get; set; }
 }
 
 
