@@ -131,7 +131,7 @@ updateProfile(data: UpdateUserProfileRequest): Observable<UserProfileDto> {
           localStorage.setItem(
             this.USER_KEY,
             JSON.stringify({
-              ...currentUser,
+              currentUser,
               email: res.data.email,
               mobileNumber: res.data.mobileNumber
             })
