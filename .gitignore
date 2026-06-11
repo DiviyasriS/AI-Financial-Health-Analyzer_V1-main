@@ -21,3 +21,5 @@ node_modules/
 Backend/Logs/
 Logs/
 *.log
+
+ui/src/environments/environment.development.ts
