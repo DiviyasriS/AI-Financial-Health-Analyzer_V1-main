@@ -119,6 +119,49 @@ public class TransactionController : ControllerBase
         return Ok(summary);
     }
 
+    /// <summary>
+    /// Permanently deletes ALL transactions for the authenticated user.
+    ///
+    /// This endpoint exists to allow users to clear data that was parsed
+    /// incorrectly (e.g. wrong IsCredit direction from unsigned bank exports)
+    /// and re-upload their files with corrected parsing.
+    ///
+    /// DELETE /api/transactions
+    /// Response 200: { "deletedCount": N, "message": "..." }
+    /// Response 400: if the user has no transactions to delete
+    /// </summary>
+    [HttpDelete]
+    public async Task<IActionResult> DeleteAllTransactions()
+    {
+        if (!TryGetUserIdFromToken(out int userId))
+        {
+            _logger.LogWarning("Transaction delete rejected because token was invalid.");
+            return Unauthorized(new { message = "Invalid token." });
+        }
+
+        _logger.LogInformation("Transaction delete requested for UserId={UserId}", userId);
+
+        int deletedCount = await _transactionService.DeleteAllTransactionsAsync(userId);
+
+        if (deletedCount == 0)
+        {
+            return BadRequest(new
+            {
+                message = "No transactions found to delete."
+            });
+        }
+
+        _logger.LogInformation(
+            "Deleted {DeletedCount} transactions for UserId={UserId}",
+            deletedCount, userId);
+
+        return Ok(new
+        {
+            deletedCount,
+            message = $"Successfully deleted {deletedCount} transactions. You can now re-upload your bank statement."
+        });
+    }
+
     private bool TryGetUserIdFromToken(out int userId)
     {
         userId = 0;

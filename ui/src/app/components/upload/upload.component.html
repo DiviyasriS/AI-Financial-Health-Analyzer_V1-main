@@ -1,10 +1,12 @@
 <div class="page-container">
   <div class="page-header">
-    <h1>Upload Transactions</h1>
-    <p>Upload your bank statement in CSV, Excel, or PDF format</p>
+    <div>
+      <h1>Upload Transactions</h1>
+      <p>Upload your bank statement in CSV, Excel, or PDF format</p>
+    </div>
   </div>
 
-  <!-- Upload card -->
+  <!-- ── Upload card ─────────────────────────────────────────────────────── -->
   <div class="card">
 
     <!-- File picker -->
@@ -70,6 +72,11 @@
         {{ result.monthWarning }}
       </div>
 
+      <!-- All rows were duplicates — hint to use Clear Data -->
+      <div *ngIf="result.savedCount === 0 && result.duplicateCount > 0" class="alert alert-warning">
+        All rows already exist. If your data looks incorrect, use <strong>Clear All Data</strong> below and re-upload.
+      </div>
+
       <button
         *ngIf="result.savedCount > 0"
         (click)="goToDashboard()"
@@ -77,5 +84,56 @@
         View Dashboard →
       </button>
     </div>
+
   </div>
+
+  <!-- ── Clear All Data card ─────────────────────────────────────────────── -->
+  <div class="card danger-zone">
+
+    <div class="danger-zone-header">
+      <div>
+        <h2>Clear All Data</h2>
+        <p class="danger-zone-desc">
+          Use this if your dashboard shows incorrect totals or ₹0 spent.
+          This permanently deletes all your uploaded transactions so you can re-upload a corrected file.
+        </p>
+      </div>
+    </div>
+
+    <!-- Delete success feedback -->
+    <div *ngIf="deleteResult" class="alert alert-success">
+      ✓ {{ deleteResult.message }}
+      <br/>
+      <strong>You can now upload your bank statement again.</strong>
+    </div>
+
+    <!-- Normal state: show the "Clear All Data" button -->
+    <div *ngIf="!confirmingDelete && !deleting && !deleteResult">
+      <button
+        (click)="onRequestDelete()"
+        class="btn-danger">
+        🗑 Clear All Data
+      </button>
+    </div>
+
+    <!-- Deleting spinner -->
+    <div *ngIf="deleting" class="alert alert-warning">
+      Deleting all transactions…
+    </div>
+
+    <!-- Confirmation prompt — shown after clicking "Clear All Data" -->
+    <div *ngIf="confirmingDelete" class="confirm-box">
+      <p class="confirm-title">⚠ Are you sure?</p>
+      <p class="confirm-body">
+        This will permanently delete <strong>all</strong> your uploaded transactions.
+        This action cannot be undone. Your account and settings will not be affected.
+      </p>
+      <div class="confirm-actions">
+        <button (click)="onCancelDelete()" class="btn-secondary">Cancel</button>
+        <button (click)="onConfirmDelete()" class="btn-danger">Yes, Delete Everything</button>
+      </div>
+    </div>
+
+  </div>
+
 </div>

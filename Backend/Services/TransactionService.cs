@@ -308,4 +308,12 @@ public class TransactionService : ITransactionService
         if (skipped > 0)    msg += $", Invalid rows skipped: {skipped}";
         return msg + ".";
     }
+
+    public async Task<int> DeleteAllTransactionsAsync(int userId)
+{
+    _logger.LogInformation("Deleting all transactions for UserId={UserId}", userId);
+    int deleted = await _transactionRepository.DeleteAllByUserIdAsync(userId);
+    _logger.LogInformation("Deleted {Count} transactions for UserId={UserId}", deleted, userId);
+    return deleted;
+}
 }

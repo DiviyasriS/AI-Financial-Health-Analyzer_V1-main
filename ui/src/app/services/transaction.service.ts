@@ -55,6 +55,11 @@ export interface UploadResult {
   monthWarning: string | null;
 }
 
+export interface DeleteResult {
+  deletedCount: number;
+  message: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -65,16 +70,16 @@ export class TransactionService {
   // HttpClient is injected — interceptor handles auth headers automatically
   constructor(private http: HttpClient) {}
 
-uploadFile(file: File): Observable<UploadResult> {
-  const formData = new FormData();
-  formData.append('file', file);
-  
-  return this.http.post<UploadResult>(
-    `${this.apiUrl}/upload`,
-    formData,
-    { responseType: 'json', observe: 'body' }
-  );
-}
+  uploadFile(file: File): Observable<UploadResult> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.http.post<UploadResult>(
+      `${this.apiUrl}/upload`,
+      formData,
+      { responseType: 'json', observe: 'body' }
+    );
+  }
 
   getTransactions(): Observable<Transaction[]> {
     return this.http.get<Transaction[]>(this.apiUrl);
@@ -82,5 +87,14 @@ uploadFile(file: File): Observable<UploadResult> {
 
   getSummary(): Observable<SpendingSummary> {
     return this.http.get<SpendingSummary>(`${this.apiUrl}/summary`);
+  }
+
+  /**
+   * Permanently deletes ALL transactions for the authenticated user.
+   * Used to allow re-upload after incorrect parsing (e.g. wrong credit/debit direction).
+   * Calls DELETE /api/transaction
+   */
+  deleteAllTransactions(): Observable<DeleteResult> {
+    return this.http.delete<DeleteResult>(this.apiUrl);
   }
 }

@@ -20,4 +20,11 @@ public interface ITransactionRepository
     Task<bool> DuplicateExistsAsync(int userId, DateTime date, string description, decimal amount);
 
     Task<int> GetTransactionCountByMonthAsync(int userId, int year, int month);
+
+    /// <summary>
+    /// Permanently deletes ALL transactions belonging to the specified user.
+    /// Returns the number of rows deleted.
+    /// Used to allow users to clear incorrect data and re-upload corrected files.
+    /// </summary>
+    Task<int> DeleteAllByUserIdAsync(int userId);
 }

@@ -78,4 +78,18 @@ public class TransactionRepository : ITransactionRepository
                           && t.Date.Year   == year
                           && t.Date.Month  == month);
     }
+
+    /// <summary>
+    /// Permanently deletes ALL transactions belonging to the specified user.
+    /// Returns the number of rows deleted.
+    ///
+    /// Uses ExecuteDeleteAsync (EF Core 7+) for a single-round-trip bulk DELETE
+    /// instead of loading all entities into memory first.
+    /// </summary>
+    public async Task<int> DeleteAllByUserIdAsync(int userId)
+    {
+        return await _context.Transactions
+            .Where(t => t.UserId == userId)
+            .ExecuteDeleteAsync();
+    }
 }
