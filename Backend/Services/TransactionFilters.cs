@@ -15,7 +15,7 @@
 public static class TransactionFilters
 {
     // ── Transfer detection keywords ──────────────────────────────────────────
-    // Category-level (checked against t.Category, case-insensitive)
+    // Category-level (exact match, case-insensitive)
     private static readonly HashSet<string> TransferCategories = new(StringComparer.OrdinalIgnoreCase)
     {
         "transfer",
@@ -27,29 +27,40 @@ public static class TransactionFilters
         "bank transfer",
     };
 
-    // Description-level keywords (substring match, lower-invariant)
+    // Description-level keywords (substring match, case-insensitive).
+    //
+    // CRITICAL: Do NOT add "upi/" here.
+    // Indian bank statements prefix virtually all UPI payments — groceries,
+    // restaurants, rent, bills — with "UPI/" (e.g. "UPI/316234/SWIGGY/...").
+    // Matching "upi/" would exclude all real spending for the majority of users.
+    //
+    // Self-transfers via UPI are identified by more specific patterns:
+    // "upi self", "upi to self", "upi transfer to" — not the bare "upi/" prefix.
     private static readonly string[] TransferDescriptionKeywords =
     {
-        "money sent",
+        "money sent to self",
         "self transfer",
         "transfer to self",
-        "fund transfer",
+        "fund transfer to own",
         "internal transfer",
-        "wallet top",          // "Paytm Wallet Top-Up"
+        "wallet top-up",
         "wallet load",
-        "neft",
-        "imps",
-        "rtgs",
         "to own account",
-        "to self",
         "sent to self",
-        "upi/",               // raw UPI reference strings like "UPI/12345/TO/..."
+        "upi to self",
+        "upi self transfer",
     };
+
+    // NEFT/IMPS/RTGS: these are wire-transfer mechanisms used for both
+    // vendor payments AND self-transfers. We do NOT blanket-exclude them
+    // because "NEFT to landlord" is a real expense. Only exclude when the
+    // description also contains self-transfer indicators (handled above via
+    // "transfer to self", "to own account", etc.).
 
     /// <summary>
     /// Returns true if this transaction should be included in spending analytics,
     /// category charts, risk scoring, and insights.
-    /// Returns false for credits and for transfers/self-transfers.
+    /// Returns false for credits and for confirmed self-transfers only.
     /// </summary>
     public static bool IsSpendingAnalytics(Transaction transaction)
     {
@@ -60,11 +71,11 @@ public static class TransactionFilters
         string category    = (transaction.Category    ?? string.Empty).Trim();
         string description = (transaction.Description ?? string.Empty).Trim().ToLowerInvariant();
 
-        // Category-level transfer check
+        // Category-level transfer check (exact match)
         if (TransferCategories.Contains(category))
             return false;
 
-        // Description-level transfer check
+        // Description-level transfer check (substring match)
         foreach (string keyword in TransferDescriptionKeywords)
         {
             if (description.Contains(keyword, StringComparison.OrdinalIgnoreCase))

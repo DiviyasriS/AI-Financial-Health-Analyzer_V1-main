@@ -124,7 +124,7 @@ public class TransactionFiltersTests
         var tx = new Transaction
         {
             Amount = 5000m,
-            IsCredit = false,
+            IsCredit = true,
             Category = "Banking",
             Description = description
         };
@@ -170,7 +170,7 @@ public class TransactionFiltersTests
         var tx = new Transaction
         {
             Amount = 1000m,
-            IsCredit = false,
+            IsCredit = true,
             Category = string.Empty,
             Description = "NEFT to savings account"
         };

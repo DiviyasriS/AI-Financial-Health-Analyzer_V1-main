@@ -158,8 +158,6 @@ public class TransactionService : ITransactionService
         }
 
         // ── Totals ────────────────────────────────────────────────────────────
-        // TotalSpent  = ALL outgoing (debits), including transfers
-        // TotalReceived = ALL incoming (credits)
         var expenseTransactions  = transactions.Where(TransactionFilters.IsDebit).ToList();
         var receivedTransactions = transactions.Where(TransactionFilters.IsCredit).ToList();
 
@@ -168,7 +166,6 @@ public class TransactionService : ITransactionService
         var totalTransactionVolume = totalSpent + totalReceived;
 
         // ── Analytics transactions (exclude credits and transfers) ────────────
-        // Used for category breakdown, insights, and risk score — NOT for totals
         var analyticsTransactions = transactions
             .Where(TransactionFilters.IsSpendingAnalytics)
             .ToList();
@@ -209,7 +206,7 @@ public class TransactionService : ITransactionService
             .OrderByDescending(c => c.Total)
             .ToList();
 
-        // ── Monthly breakdown (expense/debit only, ascending for delta calc) ──
+        // ── Monthly breakdown ──────────────────────────────────────────────────
         var monthlyRaw = expenseTransactions
             .GroupBy(t => new { t.Date.Year, t.Date.Month })
             .Select(g => new
@@ -223,8 +220,6 @@ public class TransactionService : ITransactionService
             .ThenBy(m => m.Month)
             .ToList();
 
-        // Build the summary list in ASCENDING order first so deltas are correct,
-        // then reverse to show newest-first in the UI.
         var monthlyAscending = new List<MonthlySummaryDto>();
 
         for (int i = 0; i < monthlyRaw.Count; i++)
@@ -242,22 +237,19 @@ public class TransactionService : ITransactionService
                 Year                             = current.Year,
                 Month                            = current.Month,
                 MonthName                        = new DateTime(current.Year, current.Month, 1).ToString("MMMM yyyy"),
-                Total                            = current.TotalSpent,       // this is total SPENT for the month
+                Total                            = current.TotalSpent,
                 TransactionCount                 = current.TransactionCount,
                 ChangeFromPreviousMonth          = change,
                 PercentageChangeFromPreviousMonth = changePct
             });
         }
 
-        // Reverse once deltas are computed — newest month appears first in the UI table
         var monthlyBreakdown = Enumerable.Reverse(monthlyAscending).ToList();
 
-        // ── Average monthly spend uses the ascending list totals (order doesn't matter) ──
         var averageMonthlySpend = monthlyAscending.Count > 0
             ? Math.Round(monthlyAscending.Average(m => m.Total), 2)
             : 0;
 
-        // ── Biggest single expense ────────────────────────────────────────────
         var biggestTransaction = expenseTransactions
             .OrderByDescending(t => Math.Abs(t.Amount))
             .FirstOrDefault();
@@ -292,8 +284,35 @@ public class TransactionService : ITransactionService
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Builds a stable, culture-invariant composite key for duplicate detection.
+    ///
+    /// Normalization applied:
+    ///   - Date:        date portion only (yyyy-MM-dd), UTC-normalized
+    ///   - Description: trimmed + collapsed internal whitespace + lower-invariant
+    ///   - Amount:      Math.Abs to ensure sign doesn't create a false mismatch,
+    ///                  formatted with InvariantCulture (G29) so the key is
+    ///                  identical regardless of the server's locale setting
+    ///
+    /// The HashSet that consumes this key uses OrdinalIgnoreCase, so the
+    /// ToLowerInvariant() call is redundant but adds a safety layer when keys
+    /// are compared outside the HashSet (e.g. in logs).
+    /// </summary>
     private static string MakeDuplicateKey(DateTime date, string description, decimal amount)
-        => $"{date.Date:yyyy-MM-dd}|{description}|{amount}";
+    {
+        // Normalize date to UTC date-only string
+        string dateKey = date.Date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+        // Normalize description: trim edges, collapse internal runs of whitespace to a single space
+        string descKey = System.Text.RegularExpressions.Regex
+            .Replace((description ?? string.Empty).Trim(), @"\s+", " ")
+            .ToLowerInvariant();
+
+        // Normalize amount: always positive, culture-invariant decimal string
+        string amountKey = Math.Abs(amount).ToString("G29", System.Globalization.CultureInfo.InvariantCulture);
+
+        return $"{dateKey}|{descKey}|{amountKey}";
+    }
 
     private static string BuildSummaryMessage(int total, int saved, int duplicates, int skipped)
     {
@@ -310,10 +329,10 @@ public class TransactionService : ITransactionService
     }
 
     public async Task<int> DeleteAllTransactionsAsync(int userId)
-{
-    _logger.LogInformation("Deleting all transactions for UserId={UserId}", userId);
-    int deleted = await _transactionRepository.DeleteAllByUserIdAsync(userId);
-    _logger.LogInformation("Deleted {Count} transactions for UserId={UserId}", deleted, userId);
-    return deleted;
-}
+    {
+        _logger.LogInformation("Deleting all transactions for UserId={UserId}", userId);
+        int deleted = await _transactionRepository.DeleteAllByUserIdAsync(userId);
+        _logger.LogInformation("Deleted {Count} transactions for UserId={UserId}", deleted, userId);
+        return deleted;
+    }
 }
