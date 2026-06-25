@@ -16,34 +16,37 @@ public class AlertService
 
     public async Task SendRiskAlertAsync(int userId, RiskDto risk)
     {
-        // Send alert only for Medium and High risk.
-        // Do not send email every time dashboard loads.
-        if (risk.RiskLevel != "Medium" && risk.RiskLevel != "High")
-            return;
-
         User? user = await _userRepository.GetByIdAsync(userId);
 
         if (user == null || string.IsNullOrWhiteSpace(user.Email))
         {
             _logger.LogWarning(
-                "Risk alert skipped because user email was not found. UserId={UserId}",
+                "Risk email skipped because user email was not found. UserId={UserId}",
                 userId);
+
             return;
         }
 
-        string subject = $"Financial Health Alert: {risk.RiskLevel} Risk Detected";
+        string subject = $"Financial Health Report: {risk.RiskLevel} Risk";
 
         string body =
 $@"Hello,
 
-Your AI Financial Health Analyzer detected a {risk.RiskLevel} financial risk level.
+Your transaction history has been analyzed successfully.
 
+Financial Risk Level: {risk.RiskLevel}
 Risk Score: {(risk.RiskScore * 100):F1}%
 
 Summary:
 {risk.Description}
 
-Please review your dashboard for detailed insights and spending suggestions.
+Risk Factors:
+{FormatList(risk.RiskFactors)}
+
+Positive Signals:
+{FormatList(risk.PositiveSignals)}
+
+Please check your dashboard for complete insights.
 
 Regards,
 AI Financial Health Analyzer";
@@ -51,8 +54,16 @@ AI Financial Health Analyzer";
         await _emailSender.SendEmailAsync(user.Email, subject, body);
 
         _logger.LogInformation(
-            "Risk alert sent for UserId={UserId}, RiskLevel={RiskLevel}",
+            "Financial risk email sent for UserId={UserId}, RiskLevel={RiskLevel}",
             userId,
             risk.RiskLevel);
+    }
+
+    private static string FormatList(List<string>? items)
+    {
+        if (items == null || items.Count == 0)
+            return "- None";
+
+        return string.Join(Environment.NewLine, items.Select(i => $"- {i}"));
     }
 }
