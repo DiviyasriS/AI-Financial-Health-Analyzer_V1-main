@@ -16,14 +16,18 @@ public class AlertService
 
     public async Task SendRiskAlertAsync(int userId, RiskDto risk)
     {
-        //if (risk.RiskLevel != "Medium" && risk.RiskLevel != "High")
-            //return;
+        // Send alert only for Medium and High risk.
+        // Do not send email every time dashboard loads.
+        if (risk.RiskLevel != "Medium" && risk.RiskLevel != "High")
+            return;
 
         User? user = await _userRepository.GetByIdAsync(userId);
 
         if (user == null || string.IsNullOrWhiteSpace(user.Email))
         {
-            _logger.LogWarning("Risk alert skipped because user email was not found. UserId={UserId}", userId);
+            _logger.LogWarning(
+                "Risk alert skipped because user email was not found. UserId={UserId}",
+                userId);
             return;
         }
 

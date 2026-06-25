@@ -70,7 +70,17 @@ public class DashboardController : ControllerBase
 
         RiskDto dto = await BuildAndPersistRiskDtoAsync(userId);
 
-await _alertService.SendRiskAlertAsync(userId, dto);
+try
+{
+    await _alertService.SendRiskAlertAsync(userId, dto);
+}
+catch (Exception ex)
+{
+    _logger.LogError(
+        ex,
+        "Risk score calculated, but risk alert email failed. UserId={UserId}",
+        userId);
+}
 
 return Ok(dto);
     }

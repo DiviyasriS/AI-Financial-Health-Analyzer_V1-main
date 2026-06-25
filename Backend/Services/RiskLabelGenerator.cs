@@ -1,13 +1,5 @@
 using Backend.Models.ML;
 
-/// <summary>
-/// Generates an explainable financial risk assessment from a user's spending features.
-///
-/// IMPORTANT DOMAIN RULE:
-/// RiskScore is a financial risk-severity score, not ML confidence.
-/// 0% means very low observed spending risk; 100% means very high observed spending risk.
-/// This prevents the UI from showing a misleading 90% score for a confident "Low" prediction.
-/// </summary>
 public static class RiskLabelGenerator
 {
     public const float LabelLow = 0f;
@@ -15,6 +7,9 @@ public static class RiskLabelGenerator
     public const float LabelHigh = 2f;
 
     private const float MaxRiskPoints = 12f;
+
+    // Minimum non-zero score when valid spending data exists.
+    private const float MinimumValidRiskScorePercent = 15f;
 
     public static float GenerateLabel(UserRiskFeatures features)
     {
@@ -40,7 +35,10 @@ public static class RiskLabelGenerator
                 MaxRiskPoints = MaxRiskPoints,
                 Summary = "Not enough spending data is available to calculate financial risk.",
                 PositiveSignals = new List<string>(),
-                RiskFactors = new List<string> { "Upload debit transactions to generate a meaningful risk score." }
+                RiskFactors = new List<string>
+                {
+                    "Upload debit transactions to generate a meaningful risk score."
+                }
             };
         }
 
@@ -58,6 +56,11 @@ public static class RiskLabelGenerator
 
         float safeScore = Math.Clamp(score, 0f, MaxRiskPoints);
         float riskScorePercent = (safeScore / MaxRiskPoints) * 100f;
+
+        // IMPORTANT FIX:
+        // If user has real spending data, do not show 0/100.
+        riskScorePercent = Math.Max(riskScorePercent, MinimumValidRiskScorePercent);
+
         string level = riskScorePercent switch
         {
             >= 70f => "High",
@@ -91,17 +94,17 @@ public static class RiskLabelGenerator
         List<string> riskFactors,
         List<string> positiveSignals)
     {
-        if (features.MonthlyAvgSpend > 60_000f)
+        if (features.MonthlyAvgSpend > 60000f)
         {
             score += 3f;
             riskFactors.Add($"Monthly average spend is high at ₹{features.MonthlyAvgSpend:F0}.");
         }
-        else if (features.MonthlyAvgSpend > 30_000f)
+        else if (features.MonthlyAvgSpend > 30000f)
         {
             score += 2f;
             riskFactors.Add($"Monthly average spend is moderately high at ₹{features.MonthlyAvgSpend:F0}.");
         }
-        else if (features.MonthlyAvgSpend > 15_000f)
+        else if (features.MonthlyAvgSpend > 15000f)
         {
             score += 1f;
             riskFactors.Add($"Monthly average spend is rising at ₹{features.MonthlyAvgSpend:F0}.");
@@ -119,9 +122,7 @@ public static class RiskLabelGenerator
         List<string> positiveSignals)
     {
         if (features.MonthCount < 2 || features.MonthlyAvgSpend <= 0)
-        {
             return;
-        }
 
         float coefficientOfVariation = features.MonthlySpendStdDev / features.MonthlyAvgSpend;
 
@@ -275,14 +276,9 @@ public static class RiskLabelGenerator
             riskFactors.Add("Only one month of data is available, so trend-based risk is limited.");
         }
 
-        if (features.EssentialSpendPercentage < 10f && features.TotalTransactions > 10)
+        if (features.TotalTransactions >= 10)
         {
-            riskFactors.Add("Essential spending appears unusually low; categories may need review.");
-        }
-
-        if (positiveSignals.Count == 0 && riskFactors.Count == 0)
-        {
-            positiveSignals.Add("No major financial risk pattern was detected.");
+            positiveSignals.Add("There is enough transaction history for a meaningful basic assessment.");
         }
     }
 }

@@ -10,7 +10,8 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { forkJoin } from 'rxjs';
+import { forkJoin, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 import { Chart } from 'chart.js';
 
 import {
@@ -81,37 +82,51 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   loadDashboard(): void {
-    this.loading = true;
-    this.error = '';
-    this.dataReady = false;
-    this.destroyCharts();
+  this.loading = true;
+  this.error = '';
+  this.dataReady = false;
+  this.destroyCharts();
 
-    forkJoin({
-      summary: this.dashboardService.getSummary(),
-      risk: this.dashboardService.getRisk(),
-      insights: this.dashboardService.getInsights(),
-    }).subscribe({
-      next: ({ summary, risk, insights }) => {
-        this.summary = summary;
-        this.risk = risk;
-        this.insights = [...insights].sort((a, b) => b.priority - a.priority);
-        this.categorySlices = this.dashboardService.toCategorySlices(summary);
-        this.monthlyBars = this.dashboardService.toMonthlyBars(summary);
-        this.loading = false;
-        this.dataReady = true;
-        this.cdr.markForCheck();
+  forkJoin({
+    summary: this.dashboardService.getSummary(),
+    risk: this.dashboardService.getRisk().pipe(
+      catchError(() =>
+        of({
+          riskLevel: 'Unknown',
+          riskScore: 0,
+          predictedAt: new Date().toISOString(),
+          description: 'Risk score is temporarily unavailable.',
+          riskFactors: [],
+          positiveSignals: [],
+        })
+      )
+    ),
+    insights: this.dashboardService.getInsights().pipe(
+      catchError(() => of([]))
+    ),
+  }).subscribe({
+    next: ({ summary, risk, insights }) => {
+      this.summary = summary;
+      this.risk = risk;
+      this.insights = [...insights].sort((a, b) => b.priority - a.priority);
+      this.categorySlices = this.dashboardService.toCategorySlices(summary);
+      this.monthlyBars = this.dashboardService.toMonthlyBars(summary);
 
-        if (this.viewReady) {
-          setTimeout(() => this.renderAllCharts(), 0);
-        }
-      },
-      error: () => {
-        this.error = 'Failed to load dashboard data. Please try again.';
-        this.loading = false;
-        this.cdr.markForCheck();
-      },
-    });
-  }
+      this.loading = false;
+      this.dataReady = true;
+      this.cdr.markForCheck();
+
+      if (this.viewReady) {
+        setTimeout(() => this.renderAllCharts(), 0);
+      }
+    },
+    error: () => {
+      this.error = 'Failed to load dashboard summary. Please try again.';
+      this.loading = false;
+      this.cdr.markForCheck();
+    },
+  });
+}
 
   private destroyCharts(): void {
     this.chartService.destroy(this.chartCategory);
@@ -223,10 +238,13 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   get normalizedRiskScore(): number {
-    const score = this.risk?.riskScore ?? 0;
-    if (!Number.isFinite(score)) return 0;
-    return Math.max(0, Math.min(1, score));
-  }
+  const score = Number(this.risk?.riskScore ?? 0);
+  if (!Number.isFinite(score)) return 0;
+
+  const normalized = score > 1 ? score / 100 : score;
+
+  return Math.max(0, Math.min(1, normalized));
+}
 
   get riskPercentage(): number {
     return Math.round(this.normalizedRiskScore * 100);
