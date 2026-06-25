@@ -60,7 +60,7 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> SendOtp([FromBody] SendOtpDto dto)
     {
         await _authService.SendMobileOtpAsync(dto);
-        return Ok(ApiResponse<object>.Ok(null, "OTP sent successfully."));
+        return Ok(ApiResponse<object?>.Ok(null, "OTP sent successfully."));
     }
 
     [HttpPost("otp/verify")]
@@ -136,7 +136,7 @@ public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto
         return BadRequest(ApiResponse<object>.Fail("Current password is incorrect or password change is not allowed."));
     }
 
-    return Ok(ApiResponse<object>.Ok(null, "Password changed successfully."));
+    return Ok(ApiResponse<object?>.Ok(null, "Password changed successfully."));
 }
 
 private int? GetCurrentUserId()
